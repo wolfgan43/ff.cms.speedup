@@ -1,0 +1,35 @@
+{
+  "name": "optim",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Optmin",
+  "main": "index.js",
+  "bin": "index.js",
+  "pkg": {
+    "assets": [
+      "layers/**/*",
+      "node_modules/**/*",
+      "src/**/*"
+    ]
+  },
+  "scripts": {
+    "build": "node index.js",
+    "website": "node website.js"
+  },
+  "author": "Wolfgan",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "*",
+    "critical": "*",
+    "node-html-parser": "*",
+    "purgecss": "*",
+
+    "clean-css": "*",
+    "terser": "*",
+    "html-minifier-terser": "*",
+    "node-fetch": "*",
+    "sharp": "*",
+    "prettier": "*",
+    "puppeteer" : "*"
+  }
+}
