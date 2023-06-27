@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {SEP, project, DOT} from '../constant.js';
+import {SEP, project, DOT, projectPath} from '../constant.js';
 import {Log, Stats} from "./log.js";
 import fetch from "node-fetch";
 
@@ -145,17 +145,17 @@ export async function saveData(dstFilePath, data, tag = "origin") {
         return {srcFilePath: null, data: data};
     }
 }
-export async function saveFetch(dstFilePath, srcFetchPath) {
-    if (!Stats.isset(dstFilePath, "origin")) {
+export async function saveFetch(dstFilePath, srcFetchPath, tag = "origin") {
+    if (!Stats.isset(dstFilePath, tag)) {
         Log.debug(`- WGET ${srcFetchPath}`);
 
-        Stats.save(dstFilePath, "origin", -1);
+        Stats.save(dstFilePath, tag, -1);
         return fetch(srcFetchPath)
             .then(res => res.text())
             .then(body => {
                 mkdir(dstFilePath);
                 return fs.promises.writeFile(dstFilePath, body).then(() => {
-                    Stats.save(dstFilePath, "origin", body.length);
+                    Stats.save(dstFilePath, tag, body.length);
                     return {srcFilePath: srcFetchPath, data: body};
                 });
             });
@@ -167,15 +167,15 @@ export async function saveFetch(dstFilePath, srcFetchPath) {
     }
 }
 
-export async function saveFile(dstFilePath, srcFilePath) {
-    if (!Stats.isset(dstFilePath, "origin")) {
+export async function saveFile(dstFilePath, srcFilePath, tag = "origin") {
+    if (!Stats.isset(dstFilePath, tag)) {
         Log.debug(`- COPY ${srcFilePath}`);
 
-        Stats.save(dstFilePath,"origin", -1);
+        Stats.save(dstFilePath,tag, -1);
         mkdir(dstFilePath);
 
         return fs.promises.copyFile(srcFilePath, dstFilePath).then(() => {
-            Stats.save(dstFilePath, "origin", fs.statSync(dstFilePath).size);
+            Stats.save(dstFilePath, tag, fs.statSync(dstFilePath).size);
             return {srcFilePath, data: fs.readFileSync(dstFilePath).toString()};
         });
     } else {
@@ -184,4 +184,23 @@ export async function saveFile(dstFilePath, srcFilePath) {
         Stats.skip(dstFilePath);
         return {srcFilePath, data: null};
     }
+}
+
+const rm = (folderPath) => {
+    if (fs.existsSync(folderPath)) {
+        fs.readdirSync(folderPath).forEach((file) => {
+            const curPath = path.join(folderPath, file);
+            if (fs.lstatSync(curPath).isDirectory()) {
+                rm(curPath);
+            } else {
+                fs.unlinkSync(curPath);
+            }
+        });
+
+        fs.rmdirSync(folderPath);
+    }
+}
+
+export function deleteProject(environment) {
+    rm(projectPath + SEP + environment);
 }

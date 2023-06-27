@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import {projectPath, SEP} from "../constant.js";
+import {project, projectPath, SEP} from "../constant.js";
 
 const MACRO_EXT = {
     ".jpg"      : "image",
@@ -126,6 +126,7 @@ export class Log {
         }
     }
     static report(title, severity = []) {
+        title = `Project: ${project.name} ${title}`;
         Object.keys(logs).forEach((bucket) => {
             Log.console(bucket);
         });
@@ -140,8 +141,16 @@ export class Log {
 
     }
 
-    static clean() {
+    static clean(startTrack = false) {
         logs = {};
+        logSeverity = {
+            "errors": 0,
+            "warning": 0,
+            "info": 0,
+        };
+        if (startTrack) {
+            Log.track(project.name.toUpperCase());
+        }
     }
 }
 

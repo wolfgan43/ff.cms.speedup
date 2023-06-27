@@ -4,11 +4,13 @@ import {CHARSET, DOT, SEP} from "../constant.js";
 import fetch from "node-fetch";
 import fs from "fs";
 
-const assetsURLs = {};
+const _assetsURLs       = {};
+const _filenameByCat    = {};
 
 export function crawler(page) {
     const dom = page.getDom();
     const getAssetsByType = (attrAssetMap = []) => {
+
         const assetURLs = {
             html        : [],
             link        : [],
@@ -20,18 +22,29 @@ export function crawler(page) {
             audios      : [],
             videos      : [],
             others      : [],
-            raw         : [],
+            dom         : {},
+            source      : {},
         };
         const addAssetURLByDomElem = (url, {domElem, attrName, sourceFile = null}) => {
-            if(url) {
-                if (!assetURLs.raw[url]) {
-                    assetURLs.raw[url] = [];
+            if (url) {
+                if (domElem) {
+                    if (!assetURLs.dom[url]) {
+                        assetURLs.dom[url] = [];
+                    }
+                    assetURLs.dom[url].push({
+                        domElem: domElem,
+                        attrName: attrName
+                    });
                 }
-                assetURLs.raw[url].push({
-                    domElem: domElem,
-                    attrName: attrName,
-                    sourceFile: sourceFile
-                });
+                if (sourceFile) {
+                    if (!assetURLs.source[url]) {
+                        assetURLs.source[url] = [];
+                    }
+                    assetURLs.source[url].push({
+                        sourceFile: sourceFile,
+                        src: attrName
+                    });
+                }
             } else {
                // Log.error(`- ASSET: Empty (${sourceFile || page.url}) --> ${domElem && domElem.toString()}`);
             }
@@ -39,21 +52,9 @@ export function crawler(page) {
         const storeAssetUrl = (url, key) => {
             const pushAssetUrl = (url, key) => {
                 const assetUrl = url.startsWith(page.sourceRoot) ? url : resolveSrcPath(url);
-                assetURLs[key].includes(url) || assetURLs[key].push(assetUrl);
+                assetURLs[key].includes(assetUrl) || assetURLs[key].push(assetUrl);
 
                 return assetUrl;
-            }
-            const isPageHtml = (url, push = false) => {
-                const pageHtmlUrl = resolvePageHtml(url);
-                if(push) {
-                    if (pageHtmlUrl) {
-                        assetURLs.html.includes(pageHtmlUrl) || assetURLs.html.push(pageHtmlUrl);
-                    } else if(["", ".html", ".htm"].includes(path.extname(url))) {
-                        assetURLs.link.includes(url) || assetURLs.link.push(url);
-                    }
-                }
-
-                return pageHtmlUrl;
             }
             const resolvePageHtml = (link) => {
                 const cleanUrl = link.replace(/\?.*$/, "").replace(/#.*$/, "");
@@ -93,12 +94,13 @@ export function crawler(page) {
             }
 
             const ext       = path.extname(url);
+
             const support   = {
                 images          : [".jpg", ".jpeg", ".gif", ".png", ".webp", ".svg"],
+                fonts           : [".ttf", ".otf", ".woff", ".woff2", ".eot", ".svg"],
                 icons           : [".ico", ".svg"],
                 stylesheets     : [".css"],
                 scripts         : [".js"],
-                fonts           : [".ttf", ".otf", ".woff", ".woff2", ".eot"],
                 videos          : [".mp4", ".ogv", ".mpg", ".mpeg", ".avi", ".webm"],
                 audios          : [".mp3", ".ogg", ".wav", ".aac", ".webm"],
                 others          : [
@@ -109,13 +111,19 @@ export function crawler(page) {
                                     ".xml", ".json", ".csv",
                                 ],
             }
-
+            let pageHtmlUrl;
             if (!url) {
                 Log.debug("ASSET EMPTY: " + page.url);
             } else if (ext && support[key] && support[key].includes(ext)) {
                 return pushAssetUrl(url, key);
-            } else if (isPageHtml(url, true)) {
-                Log.debug("FIND HTML: " + page.url + " => " + url);
+            } else if ((pageHtmlUrl = resolvePageHtml(url))) {
+                Log.debug("FIND HTML: " + page.url + " => " + url + " => " + pageHtmlUrl);
+                assetURLs.html.includes(pageHtmlUrl) || assetURLs.html.push(pageHtmlUrl);
+                return pageHtmlUrl;
+            } else if(["", ".html", ".htm"].includes(path.extname(url))) {
+                assetURLs.link.includes(url) || assetURLs.link.push(url);
+            //} else if (isPageHtml(url, true)) {
+            //    Log.debug("FIND HTML: " + page.url + " => " + url);
             } else if (!support[key]) {
                 for (let [supportKey, supportExt] of Object.entries(support)) {
                     if (supportExt.includes(ext)) {
@@ -142,12 +150,12 @@ export function crawler(page) {
         };
 
         const retrieveURLs = async (asset, data = null) => {
-            const assetSrcPath     = resolveSrcPath(asset);
+            const assetSrcPath      = resolveSrcPath(asset);
 
-            if (assetsURLs[assetSrcPath] === undefined) {
+            if (_assetsURLs[assetSrcPath] === undefined) {
                 Log.debug(`EXTRACT URL FROM: ${assetSrcPath}`);
 
-                assetsURLs[assetSrcPath] = [];
+                _assetsURLs[assetSrcPath] = [];
                 if (!data) {
                     data = (page.isWeb || asset.startsWith('http')
                             ? await fetch(assetSrcPath).then(res => res.text())
@@ -155,13 +163,27 @@ export function crawler(page) {
                     );
                 }
 
-                const regexUrl = /(?<!@import\s*)url\s*\(\s*['"]?\s*((?!data:)([^'"?#\)]*)+)\s*['"]?\s*\)\s*/gi;
+                //const regexUrl = /(?<!@import\s*)url\s*\(\s*['"]?\s*((?!data:)([^'"?#)]+)+)\s*['"]?\s*\)\s*/gi;
+                const regexUrl = /(?<!@import\s)url\s*\((['"]?)\s*((?!data:)([^'"?#)]+))[?#]?[^'")]*\1\)/gi;
                 const regexImport = /@import\s(?:url\()?\s?["'](.*?)["']\s?\)?[^;]*;?/gi;
                 /**
                  * url([...])
                  */
+                const dictExt   = {
+                    ".ttf"          : "fonts",
+                    ".otf"          : "fonts",
+                    ".woff"         : "fonts",
+                    ".woff2"        : "fonts",
+                    ".eot"          : "fonts",
+                }
+
+                let extname;
+                let filename;
                 for (const match of data.matchAll(regexUrl)) {
-                    assetsURLs[assetSrcPath].push(match[1]);
+                    _assetsURLs[assetSrcPath].push(match[2]);
+                    extname = path.extname(match[2]);
+                    filename = path.basename(match[2], extname);
+                    dictExt[extname] && (_filenameByCat[filename] = dictExt[extname]);
                 }
                 /**
                  * @import
@@ -172,10 +194,11 @@ export function crawler(page) {
                 }
             }
 
-            for (const url of assetsURLs[assetSrcPath]) {
-                addAssetURLByDomElem(storeAssetUrl(path.dirname(assetSrcPath) + SEP + url, "extract"),
+            for (const url of [...new Set(_assetsURLs[assetSrcPath])]) {
+                addAssetURLByDomElem(storeAssetUrl(path.dirname(assetSrcPath) + (url.startsWith(SEP) ? "": SEP) + url, _filenameByCat[path.parse(url).name] || "extract"),
                 {
-                    sourceFile: assetSrcPath
+                    sourceFile: assetSrcPath,
+                    attrName: url
                 });
             }
         };
@@ -204,6 +227,7 @@ export function crawler(page) {
                             break;
                         case "icon":
                         case "shortcut icon":
+                        case "apple-touch-icon":
                             addAssetURLByDomElem(storeAssetUrl(href, "icons"),
                             {
                                 domElem: elem,
@@ -329,11 +353,11 @@ export function crawler(page) {
         /**
          * attr style
          */
-        dom.querySelectorAll('*[style]').forEach((elem) => {
-            retrieveURLs(page.webUrl, elem.getAttribute("style")).catch(err => {
-                console.error(err);
-                process.exit(0);
-            });
+        const elements              = dom.querySelectorAll('*[style]');
+        const inlineStyles    = [...elements].map(element => element.getAttribute('style')).join('; ');
+        retrieveURLs(page.webUrl, inlineStyles).catch(err => {
+            console.error(err);
+            process.exit(0);
         });
 
         /**
