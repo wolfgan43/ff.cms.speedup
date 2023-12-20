@@ -4,7 +4,7 @@ import {Log, Stats} from "./log.js";
 import * as clone from "./clone.js";
 import {normalizeUrl, Page} from "./page.js";
 
-export function spider(options) {
+export function spider() {
     let promises    = [];
     let urlsCrawled = [];
     let urlsCloned  = [];
@@ -14,6 +14,9 @@ export function spider(options) {
         const cpAsset = (src, {onSave = () => {}, onError = () => {}}) => {
             if(!src) {
                 onError();
+                return "";
+            }
+            if (src.startsWith("http")) {
                 return "";
             }
             const dst     = page.src.getFilePath(src)
@@ -43,7 +46,7 @@ export function spider(options) {
             Log.write(`Copy HTML  ${page.url}`);
 
             const pageCrawled = (await crawler(page)).scrape({
-                attrAssetMap: options.attrAssetMap,
+                attrAssetMap: project.options.attrAssetMap,
                 onRetrieveAssets: (assets) => {
                     for (const [assetUrl, assetData] of Object.entries(assets.dom)) {
                         const assetDstPath = cpAsset(assetUrl, {
@@ -62,10 +65,11 @@ export function spider(options) {
                                 }
                             }
                         });
-
-                        assetData.forEach(data => {
-                            data.domElem && data.domElem.setAttribute(data.attrName, page.src.getWebUrl(assetDstPath));
-                        });
+                        if (assetDstPath) {
+                            assetData.forEach(data => {
+                                data.domElem && data.domElem.setAttribute(data.attrName, page.src.getWebUrl(assetDstPath));
+                            });
+                        }
                     }
                     for (const [assetUrl, assetData] of Object.entries(assets.source)) {
                         cpAsset(assetUrl, {
@@ -92,7 +96,7 @@ export function spider(options) {
             promises.push(clone.saveData(page.src.filePath, pageCrawled.dom.toString()));
 
             for (const href of pageCrawled.assets.html) {
-                urlsCrawled.includes(normalizeUrl(href)) || (await crawl(new Page(href), options));
+                urlsCrawled.includes(normalizeUrl(href)) || (await crawl(new Page(href)));
             }
         } catch (e) {
             Log.error(`Empty HTML ${page.url} (from ${parentCrawl})`);
@@ -105,7 +109,7 @@ export function spider(options) {
             Log.clean(true);
             clone.deleteProject("src");
 
-            for (const url of options.urls) {
+            for (const url of project.options.urls) {
                 parentCrawl = documentRoot + url;
 
                 await crawl(new Page(parentCrawl));

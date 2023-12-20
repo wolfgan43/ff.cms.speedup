@@ -1,9 +1,9 @@
 {
+  "host": "",
   "urls": [
     "/index.html",
     "/404.html"
   ],
-  "preview": true,
   "seo": {
     "content": {},
     "architecture": {},

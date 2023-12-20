@@ -230,6 +230,12 @@ export class Stats {
             stats["tag"][tag].push(bucket);
         }
     }
+    static geAll(key = null) {
+        return (key
+            ? stats[key] ?? {}
+            : stats
+        );
+    }
     static get(bucket, tag = null) {
         let context = null;
         if (stats["bucket"][bucket] !== undefined) {

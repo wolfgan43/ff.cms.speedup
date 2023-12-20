@@ -162,12 +162,17 @@ function minify(css) {
     return new CleanCSS().minify(css).styles;
 }
 
-export function combine(stylesheets) {
+export async function combine(stylesheets) {
     let css = "";
 
-    stylesheets.forEach((stylesheet) => {
-        css += fs.readFileSync(stylesheet, {encoding: CHARSET});
-    });
+    for (const stylesheet of stylesheets) {
+        css += (stylesheet.startsWith("http")
+            ? await fetch(stylesheet).then((response) => {
+                return response.text();
+            })
+            : fs.readFileSync(stylesheet, {encoding: CHARSET})
+        );
+    }
 
     return css;
 }

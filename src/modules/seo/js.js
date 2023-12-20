@@ -11,16 +11,20 @@ function minify(js) {
     });
 }
 
-export function combine(scripts) {
+export async function combine(scripts) {
     let js = "";
 
-    scripts.forEach((script) => {
-        js += fs.readFileSync(script, {encoding: CHARSET});
-    });
+    for (const script of scripts) {
+        js += (script.startsWith("http")
+                ? await fetch(script).then((response) => {
+                    return response.text();
+                })
+                : fs.readFileSync(script, {encoding: CHARSET})
+        );
+    }
 
     return js;
 }
-
 export function min(scripts, onSaveData = null) {
     for (const script of Stats.diffKeys(scripts, "scripts")) {
         Stats.save(script, "scripts", -1);

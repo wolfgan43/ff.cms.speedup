@@ -36,15 +36,41 @@ export const projectName   = args[1] ?? path.resolve(documentRoot).replace(/\\/g
 export const cachePath   = DOT + SEP + "cache" + SEP + projectName;
 export const srcAssetPath  = documentRoot + ASSET_PATH;
 
+const loadOptions = () => {
+    const getProjectOptions = () => {
+        return fs.existsSync(documentRoot + SEP + '.optim.json') ?
+            JSON.parse(fs.readFileSync(documentRoot + SEP + '.optim.json'), {encoding: CHARSET})
+            : {};
+    }
+
+    try {
+        return {...JSON.parse(fs.readFileSync(DOT + SEP + 'options.json'), {encoding: CHARSET}), ...getProjectOptions()};
+    } catch (error) {
+        console.error('Errore durante la lettura del file options.json', error);
+        process.exit(1);
+    }
+}
+
 export const project = {
     name : projectName,
     cachePath: cachePath,
     documentRoot: documentRoot,
+    options: loadOptions(),
     srcPath: (path = "") => {
         return cachePath + SEP + "src" + path
     },
     distPath: (path = "") => {
         return documentRoot + SEP + "dist" + path
+    },
+    distWebUrl(filePath) {
+        const getUrl = () => {
+            filePath = this.options.link.removeExtension.reduce((acc, ext) => acc.replace(new RegExp(`${ext}$`, 'i'), ''), filePath)
+            if (this.options.link.removeIndex) {
+                filePath = filePath.replace(/\/index(\.[a-zA-Z0-9]{2,5})?$/i, '/');
+            }
+            return filePath;
+        }
+        return getUrl().replace(documentRoot + SEP + "dist", "");
     }
 };
 

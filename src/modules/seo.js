@@ -16,25 +16,6 @@ const printArray = (array => {
     return `\n  ${array.join("\n  ")}`;
 });
 export function seo(urls) {
-    const defaultOptions = {
-        img: {
-            lazy: true,
-            alt: true,
-            title: true,
-            webp: true,
-            compress: true,
-            progressive: true,
-        },
-        css: {
-            async: false,
-            combine: false,
-            critical: false,
-            minify: false,
-        },
-        js: {
-            async: false
-        }
-    };
     const buffer = {
         assets: {},
         map: {},
@@ -107,7 +88,7 @@ export function seo(urls) {
             return str.startsWith(SEP) ? new RegExp(str.slice(1)) : str;
         })
     }
-    const optimize = async (page, options) => {
+    const optimize = async (page) => {
         const onRetrieveAssets = (assets, dom) => {
             const getRelativePath = (assetWebUrl, sourceFile) => {
                 if(assetWebUrl.startsWith(DOT + SEP) || assetWebUrl === SEP) {
@@ -132,13 +113,13 @@ export function seo(urls) {
                     .join(SEP);
             };
             const setWebUrl = (url) => {
-                let modifiedUrl = options.link.removeExtension.reduce((acc, ext) => acc.replace(new RegExp(`${ext}$`, 'i'), ''), url);
+                let modifiedUrl = project.options.link.removeExtension.reduce((acc, ext) => acc.replace(new RegExp(`${ext}$`, 'i'), ''), url);
 
-                if (options.link.removeIndex) {
+                if (project.options.link.removeIndex) {
                     modifiedUrl = modifiedUrl.replace(/\/index(\.[a-zA-Z0-9]{2,5})?$/i, '/');
                 }
 
-                return (options.link.relative
+                return (project.options.link.relative
                     ? getRelativePath(modifiedUrl, page.url)
                     : modifiedUrl
                 );
@@ -166,16 +147,16 @@ export function seo(urls) {
             }
             const scripts = async () => {
                 Log.debug(`- OPTIMIZE JS`);
-                if (options.js.combine) {
+                if (project.options.js.combine) {
                     /**
                      * Combine Javascript
                      */
                     Log.write(`- JS Combine: ${printArray(assets.scripts)}`, page.dist.filePath);
-                    const combinedScript = js.combine(assets.scripts);
+                    const combinedScript = await js.combine(assets.scripts);
                     Log.write(`- JS Combine Size: (${combinedScript.length} bytes)`, page.dist.filePath);
 
                     const scriptAsync = (
-                        options.js.async
+                        project.options.js.async
                             ? ` defer="defer" async="async"`
                             : ` defer="defer"`
                     );
@@ -191,7 +172,7 @@ export function seo(urls) {
                      * Purge combinedScript
                      */
                     let scriptPurged = (
-                        options.js.purge
+                        project.options.js.purge
                             ? combinedScript
                             : combinedScript
                     );
@@ -203,9 +184,9 @@ export function seo(urls) {
                         script: scriptPurged,
                         filename: page.name + page.pathName.replaceAll(SEP, "-"),
                         basePath: page.dist.rootDir,
-                        min: options.js.minify,
+                        min: project.options.js.minify,
                     });
-                    Log.write(`- JS Combine Save${options.js.minify ? ' (Minified)' : ''}:  ${scriptFilePath}`, page.dist.filePath);
+                    Log.write(`- JS Combine Save${project.options.js.minify ? ' (Minified)' : ''}:  ${scriptFilePath}`, page.dist.filePath);
 
                     /**
                      * Html: Add Combined Script
@@ -216,7 +197,7 @@ export function seo(urls) {
                         `<script src="${setWebUrl(scriptUrl)}"${scriptAsync}></script>`
                     ));
                 } else {
-                    if (options.js.minify) {
+                    if (project.options.js.minify) {
                         js.min(assets.scripts, (script) => {
                             //todo: da fare meglio questi percorsi (da cercarli in giro: eliminare .replace(page.sourceRoot, "")): page.dist.getFilePath(script.replace(page.sourceRoot, ""));
                             const dst = page.dist.getFilePath(script);
@@ -240,21 +221,21 @@ export function seo(urls) {
                     /**
                      * Purge Scripts
                      */
-                    if (options.js.purge) {
+                    if (project.options.js.purge) {
                         //todo: da implementare
                     }
 
                     /**
                      * Html: change Scripts reg
                      */
-                    Log.write(`- JS Change Scripts${options.js.async ? " Defer": ""}${options.js.minify ? ", Minified": ""}: ${printArray(assets.scripts)}`, page.dist.filePath);
+                    Log.write(`- JS Change Scripts${project.options.js.async ? " Defer": ""}${project.options.js.minify ? ", Minified": ""}: ${printArray(assets.scripts)}`, page.dist.filePath);
                     setDomElem(assets.scripts, (domElem, attrName) => {
                         let url = domElem.getAttribute(attrName);
 
                         /**
                          * Html: set min Extension Scripts
                          */
-                        if (options.js.minify && !url.endsWith(".min.js")) {
+                        if (project.options.js.minify && !url.endsWith(".min.js")) {
                             url = url.replace(".js", ".min.js");
                         }
                         if (!url.startsWith("http")) {
@@ -264,7 +245,7 @@ export function seo(urls) {
                         /**
                          * Html: set Defer Scripts
                          */
-                        if(options.js.async) {
+                        if(project.options.js.async) {
                             //todo: convertire in base64 gli script inline se gia non sono async
                             domElem.setAttribute("defer", "defer");
                         }
@@ -275,25 +256,25 @@ export function seo(urls) {
                 const onLoadCSS         = "if(media!=='all')media='all'";
 
                 Log.debug(`- OPTIMIZE CSS`);
-                if (options.css.combine) {
+                if (project.options.css.combine) {
                     /**
                      * Combine StyleSheets
                      */
                     Log.write(`- CSS Combine: ${printArray(assets.stylesheets)}`, page.dist.filePath);
                     const stylesheetAsync = (
-                        options.css.async || options.css.critical
+                        project.options.css.async || project.options.css.critical
                             ? ` media="print" onload="${onLoadCSS}"`
                             : ''
                     );
 
-                    const combinedStylesheet = css.combine(assets.stylesheets);
+                    const combinedStylesheet = await css.combine(assets.stylesheets);
 
                     /**
                      * Critical CSS
                      * unCritical CSS
                      */
                     let stylesheetUncritical = (
-                        options.css.critical
+                        project.options.css.critical
                             ? await css.critical({
                                 srcFilePath: page.url,
                                 stylesheets: assets.stylesheets,
@@ -324,12 +305,12 @@ export function seo(urls) {
                     /**
                      * Purge unCritical
                      */
-                    if (options.css.purge) {
+                    if (project.options.css.purge) {
                         stylesheetUncritical = await css.purgeStyle({
                             html: dom.toString(),
                             style: stylesheetUncritical,
-                            safeClasses: arr2regexp(options.css.purge.safeClasses),
-                            blockClasses: arr2regexp(options.css.purge.blockClasses),
+                            safeClasses: arr2regexp(project.options.css.purge.safeClasses),
+                            blockClasses: arr2regexp(project.options.css.purge.blockClasses),
                         }).then((stylesheet) => {
                             Log.write(`- CSS Combine Purge: (${stylesheet.length} bytes)`, page.dist.filePath);
                             return stylesheet;
@@ -347,9 +328,9 @@ export function seo(urls) {
                         stylesheet: stylesheetUncritical,
                         filename: page.name + page.pathName.replaceAll(SEP, "-"),
                         basePath: page.dist.rootDir,
-                        min: options.css.minify || options.css.critical,
+                        min: project.options.css.minify || project.options.css.critical,
                     });
-                    Log.write(`- CSS Combine Save${options.css.minify ? ' (Minified)' : ''}: ${stylesheetFilePath}`, page.dist.filePath);
+                    Log.write(`- CSS Combine Save${project.options.css.minify ? ' (Minified)' : ''}: ${stylesheetFilePath}`, page.dist.filePath);
 
                     /**
                      * Html: Add unCritical CSS
@@ -364,7 +345,7 @@ export function seo(urls) {
                     /**
                      * Critical CSS
                      */
-                    if (options.css.critical) {
+                    if (project.options.css.critical) {
                         await css.critical({
                             srcFilePath: page.url,
                             stylesheets: assets.stylesheets,
@@ -382,7 +363,7 @@ export function seo(urls) {
                     /**
                      * Minify CSS
                      */
-                    if (options.css.minify) {
+                    if (project.options.css.minify) {
                         css.min(assets.stylesheets, (stylesheetMin, stylesheet) => {
                             const dst = page.dist.getFilePath(stylesheetMin);
                             /**
@@ -405,14 +386,14 @@ export function seo(urls) {
                     /**
                      * Html: change StyleSheets Ref
                      */
-                    Log.write(`- CSS Change Stylesheets${options.css.async ? " Async": ""}${options.css.minify ? ", Minified": ""}: ${printArray(assets.stylesheets)}`, page.dist.filePath);
+                    Log.write(`- CSS Change Stylesheets${project.options.css.async ? " Async": ""}${project.options.css.minify ? ", Minified": ""}: ${printArray(assets.stylesheets)}`, page.dist.filePath);
                     setDomElem(assets.stylesheets, (domElem, attrName) => {
                         let url = domElem.getAttribute(attrName);
 
                         /**
                          * Html: set min Extension StyleSheets
                          */
-                        if (options.css.minify && !url.endsWith(".min.css")) {
+                        if (project.options.css.minify && !url.endsWith(".min.css")) {
                             url = url.replace(".css", ".min.css");
                         }
                         if (!url.startsWith("http")) {
@@ -422,7 +403,7 @@ export function seo(urls) {
                         /**
                          * Html: set Async StyleSheets
                          */
-                        if(options.css.async) {
+                        if(project.options.css.async) {
                             domElem.setAttribute("media", "print");
                             domElem.setAttribute("onLoad", onLoadCSS);
                         }
@@ -437,7 +418,7 @@ export function seo(urls) {
                     if (!Stats.isset(img, "images")) {
                         Stats.save(img, "images", -1);
                         if (fs.existsSync(img)) {
-                            const imgOptimized = image.optimize(img, options.img);
+                            const imgOptimized = image.optimize(img, project.options.img);
                             const imageFilePath = path.dirname(page.dist.getFilePath(img)) + SEP + imgOptimized.imageBaseName;
                             const imageWebUrl = page.dist.getWebUrl(imageFilePath);
                             /**
@@ -464,7 +445,7 @@ export function seo(urls) {
                      */
                     setDomElem(img, (domElem, attrName) => {
                         if (buffer.assets[img]) {
-                            Log.write(`- HTML Change Image${options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].dst}`, page.dist.filePath);
+                            Log.write(`- HTML Change Image${project.options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].dst}`, page.dist.filePath);
 
                             domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].dst));
 
@@ -481,7 +462,7 @@ export function seo(urls) {
                             /**
                              * Lazy Image
                              */
-                            if (options.img.lazy && domElem.tagName === "IMG") {
+                            if (project.options.img.lazy && domElem.tagName === "IMG") {
                                 domElem.setAttribute("loading", "lazy");
                             }
                         } else {
@@ -495,7 +476,7 @@ export function seo(urls) {
                     if (!Stats.isset(icon, "icons")) {
                         Stats.save(icon, "icons", -1);
                         if(fs.existsSync(icon)) {
-                            const iconOptimized = image.optimize(icon, options.img);
+                            const iconOptimized = image.optimize(icon, project.options.img);
                             const iconFilePath = path.dirname(page.dist.getFilePath(icon)) + SEP + iconOptimized.imageBaseName;
                             const iconWebUrl = page.dist.getWebUrl(iconFilePath);
                             /**
@@ -582,7 +563,7 @@ export function seo(urls) {
                     minifyCSS: true,
                     minifyJS: true
                 };
-                return (options.html.minify
+                return (project.options.html.minify
                         ? HTMLMinifier(html, minifyOptions).then(html => {
                             return clone.saveData(page.dist.filePath, html, "htmlOptimized");
                         })
@@ -598,13 +579,13 @@ export function seo(urls) {
         Log.write(`- HTML Dom Loaded: ${page.url}`, page.dist.filePath);
 
         const pageCrawled = (await crawler(page)).scrape({
-            attrAssetMap: options.attrAssetMap,
+            attrAssetMap: project.options.attrAssetMap,
         });
 
         return onRetrieveAssets(pageCrawled.assets, pageCrawled.dom);
     }
     const publics = {
-        speedUp: (options = defaultOptions) => {
+        speedUp: () => {
             let promises = [];
 
             clone.deleteProject("dist");
@@ -612,7 +593,7 @@ export function seo(urls) {
             Log.clean(true);
 
             urls.forEach((url) => {
-                promises.push(optimize(new Page(url), options));
+                promises.push(optimize(new Page(url)));
             });
 
             return Promise.all(promises).then(() => {
@@ -623,12 +604,12 @@ export function seo(urls) {
                 /**
                  * Purge CSS
                  */
-                if (!options.css.combine && options.css.purge) {
+                if (!project.options.css.combine && project.options.css.purge) {
                     css.purgeFiles({
                         contents: Stats.get("htmlOptimized"),
                         stylesheets: stylesheets,
-                        safeClasses: arr2regexp(options.css.purge.safeClasses),
-                        blockClasses: arr2regexp(options.css.purge.blockClasses)
+                        safeClasses: arr2regexp(project.options.css.purge.safeClasses),
+                        blockClasses: arr2regexp(project.options.css.purge.blockClasses)
                     }).then(() => {
                         Log.write(`CSS Purge Stylesheets: ${printArray(stylesheets)}`);
                         Stats.log("speedup"); //todo: da togliere
@@ -642,7 +623,7 @@ export function seo(urls) {
                     Log.report(`SpeedUp! (stored in ${project.distPath()})`); //todo: da togliere
                 }
 
-                return publics;
+                return Stats.geAll("tag");
             }).catch(err => {
                 console.error(err);
                 process.exit(0);

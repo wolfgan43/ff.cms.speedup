@@ -148,6 +148,7 @@ console.log(url, url + extUrl, url + SEP + "index" + page.extension, cleanUrl.le
             }
 
             const ext = path.extname(url);
+            const isExternal = url.startsWith("http") || url.startsWith("//");
 
             const support = {
                 images: [".jpg", ".jpeg", ".gif", ".png", ".webp", ".svg"],
@@ -169,7 +170,7 @@ console.log(url, url + extUrl, url + SEP + "index" + page.extension, cleanUrl.le
             let pageHtmlUrl;
             if (!url) {
                 Log.debug("ASSET EMPTY: " + page.url);
-            } else if (ext && support[key] && support[key].includes(ext)) {
+            } else if (support[key] && (isExternal || support[key].includes(ext))) {
                 return pushAssetUrl(url, key);
             } else if ((pageHtmlUrl = resolvePageHtml(url))) {
                 Log.debug("FIND HTML: " + page.url + " => " + url + " => " + pageHtmlUrl);

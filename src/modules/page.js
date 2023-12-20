@@ -40,6 +40,9 @@ export class Page {
         filePath : null,
         webUrl: null,
         getFilePath(webUrl) {
+            if (webUrl.startsWith("http")) {
+                return webUrl;
+            }
             return this.rootDir + webUrl.replace(this.parent.sourceRoot, "");
         },
         getWebUrl(filePath) {
@@ -55,7 +58,7 @@ export class Page {
             return this.rootDir + webUrl.replace(this.parent.sourceRoot, "");
         },
         getWebUrl(filePath) {
-            return resolvePath(filePath.replace(this.rootDir, "").replace(SEP + 'index.html', '')) || SEP;
+            return resolvePath(filePath.replace(this.rootDir, ""));
         }
     }
 
