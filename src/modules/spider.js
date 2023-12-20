@@ -1,18 +1,16 @@
-import {project} from "../constant.js";
+import {documentRoot, project} from "../constant.js";
 import {crawler} from "./crawler.js";
 import {Log, Stats} from "./log.js";
 import * as clone from "./clone.js";
-import {Page} from "./page.js";
+import {normalizeUrl, Page} from "./page.js";
 
-export function spider(urls = []) {
+export function spider(options) {
     let promises    = [];
     let urlsCrawled = [];
     let urlsCloned  = [];
+    let parentCrawl = null;
 
-    if (!Array.isArray(urls)) {
-        urls = [urls];
-    }
-    const crawl = (page, options) => {
+    const crawl = async (page) => {
         const cpAsset = (src, {onSave = () => {}, onError = () => {}}) => {
             if(!src) {
                 onError();
@@ -35,80 +33,83 @@ export function spider(urls = []) {
 
             return dst;
         }
-
         urlsCrawled.push(page.url);
 
         /**
          * Crawler->Scrape
          */
         Log.debug(`CRAWLER ${page.url}`);
-        Log.write(`Copy HTML ${page.url}`);
-        const pageCrawled = crawler(page).scrape({
-            attrAssetMap: options.attrAssetMap,
-            onRetrieveAssets: (assets) => {
-                for (const [assetUrl, assetData] of Object.entries(assets.dom)) {
-                    const assetDstPath = cpAsset(assetUrl, {
-                        onError: () => {
-                            let error = "";
-                            assetData.forEach(data => {
-                                const from = data.domElem.toString();
-                                error += "\n  " + (from.substring(0, from.indexOf('>') + 1) || from);
-                            });
+        try {
+            Log.write(`Copy HTML  ${page.url}`);
 
-                            if (!assetUrl) {
-                                Log.error(`- ASSET: Empty --> ${page.url} ${error}`);
-                            } else {
-                                Log.error(`- ASSET: Not Found (${assetUrl}) --> ${page.url} ${error}`);
-                            }
-                        }
-                    });
+            const pageCrawled = (await crawler(page)).scrape({
+                attrAssetMap: options.attrAssetMap,
+                onRetrieveAssets: (assets) => {
+                    for (const [assetUrl, assetData] of Object.entries(assets.dom)) {
+                        const assetDstPath = cpAsset(assetUrl, {
+                            onError: () => {
+                                let error = "";
+                                assetData.forEach(data => {
+                                    const from = data.domElem.toString();
+                                    error += "\n  " + (from.substring(0, from.indexOf('>') + 1) || from);
+                                });
 
-                    assetData.forEach(data => {
-                        data.domElem && data.domElem.setAttribute(data.attrName, page.src.getWebUrl(assetDstPath));
-                    });
-                }
-                for (const [assetUrl, assetData] of Object.entries(assets.source)) {
-                    cpAsset(assetUrl, {
-                        onError: () => {
-                            const source = [];
-                            assetData.forEach(data => {
-                                if(data.sourceFile) {
-                                    source.push(data.sourceFile);
+                                if (!assetUrl) {
+                                    Log.error(`- ASSET: Empty --> ${page.url} ${error}`);
+                                } else {
+                                    clone.touch(page.src.getFilePath(assetUrl));
+                                    Log.error(`- ASSET: Not Found (${assetUrl}) --> ${page.url} ${error}`);
                                 }
-                            });
-
-                            if (!assetUrl) {
-                                Log.error(`- ASSET: Empty --> ${source.join("  ")}`);
-                            } else {
-                                Log.error(`- ASSET: Not Found (${assetUrl}) --> ${source.join("  ")}`);
                             }
-                        }
-                    });
-                }
-            },
-        });
+                        });
 
-        urlsCloned.push(page.src.filePath);
-        promises.push(clone.saveData(page.src.filePath, pageCrawled.dom.toString()));
+                        assetData.forEach(data => {
+                            data.domElem && data.domElem.setAttribute(data.attrName, page.src.getWebUrl(assetDstPath));
+                        });
+                    }
+                    for (const [assetUrl, assetData] of Object.entries(assets.source)) {
+                        cpAsset(assetUrl, {
+                            onError: () => {
+                                const source = [];
+                                assetData.forEach(data => {
+                                    if(data.sourceFile) {
+                                        source.push(data.sourceFile);
+                                    }
+                                });
 
-        /**
-         * Crawl unique internal URLs
-         */
-        pageCrawled.assets.html.forEach(href => {
-            urlsCrawled.includes(href) || crawl(new Page(href), options);
-        });
+                                if (!assetUrl) {
+                                    Log.error(`- ASSET: Empty --> ${source.join("  ")}`);
+                                } else {
+                                    Log.error(`- ASSET: Not Found (${assetUrl}) --> ${source.join("  ")}`);
+                                }
+                            }
+                        });
+                    }
+                },
+            });
+
+            urlsCloned.push(page.src.filePath);
+            promises.push(clone.saveData(page.src.filePath, pageCrawled.dom.toString()));
+
+            for (const href of pageCrawled.assets.html) {
+                urlsCrawled.includes(normalizeUrl(href)) || (await crawl(new Page(href), options));
+            }
+        } catch (e) {
+            Log.error(`Empty HTML ${page.url} (from ${parentCrawl})`);
+        }
     }
 
     return {
-        clone : async (options = {
-            attrAssetMap: []
-        }) => {
+        clone : async () => {
             Stats.clean();
             Log.clean(true);
+            clone.deleteProject("src");
 
-            urls.forEach(url => {
-                crawl(new Page(url), options);
-            });
+            for (const url of options.urls) {
+                parentCrawl = documentRoot + url;
+
+                await crawl(new Page(parentCrawl));
+            }
 
             return Promise.all(promises).then(() => {
                 Log.report(`Cloned! (stored in ${project.srcPath()})`);

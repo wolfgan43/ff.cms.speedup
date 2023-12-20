@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import {project, projectPath, SEP} from "../constant.js";
+import {project, cachePath, SEP} from "../constant.js";
 
 const MACRO_EXT = {
     ".jpg"      : "image",
@@ -156,7 +156,7 @@ export class Log {
 
 export class Stats {
     static log(name = "") {
-        return fs.promises.writeFile(projectPath + SEP + (name || "stats") + ".log.json", JSON.stringify(stats, null, 2));
+        return fs.promises.writeFile(cachePath + SEP + (name || "stats") + ".log.json", JSON.stringify(stats, null, 2));
     }
     static report() {
         return Object.keys(stats).sort().reduce((objEntries, key) => {

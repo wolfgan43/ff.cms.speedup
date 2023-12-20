@@ -30,7 +30,7 @@ export async function purgeStyle({
         css: [{
             raw: style
         }],
-        fontFace: true,
+        fontFace: false,
         keyframes: true,
         variables: true,
         rejected: false,
@@ -69,7 +69,7 @@ export async function purgeFiles({
                 ? Stats.diffKeys(stylesheets, "stylesheetsPurged")
                 : [rootDir + CSS_REGEXP]
             ),
-            fontFace: true,
+            fontFace: false,
             keyframes: true,
             variables: true,
             rejected: false,
@@ -100,7 +100,7 @@ export async function critical({
         inline: false,
 
         // Your base directory
-        //base: projectPath,
+        base: process.cwd(),
 
         // HTML source
         //html: '<html>...</html>',

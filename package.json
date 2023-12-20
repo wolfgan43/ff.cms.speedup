@@ -13,23 +13,26 @@
     ]
   },
   "scripts": {
-    "build": "node index.js",
-    "website": "node website.js"
+    "build": "node index.js"
   },
   "author": "Wolfgan",
   "license": "MIT",
+  "engines": {
+    "node": ">=21.0.0",
+    "npm": ">=8.15.0"
+  },
   "dependencies": {
-    "dotenv": "*",
-    "critical": "*",
-    "node-html-parser": "*",
-    "purgecss": "*",
-
     "clean-css": "*",
-    "terser": "*",
+    "critical": "*",
+    "dotenv": "*",
     "html-minifier-terser": "*",
     "node-fetch": "*",
-    "sharp": "*",
+    "node-html-parser": "*",
     "prettier": "*",
-    "puppeteer" : "*"
+    "puppeteer": "*",
+    "purgecss": "*",
+    "sharp": "*",
+    "svgo": "*",
+    "terser": "*"
   }
 }

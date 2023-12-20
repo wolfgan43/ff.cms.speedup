@@ -1,0 +1,45 @@
+{
+  "urls": [
+    "/index.html",
+    "/404.html"
+  ],
+  "preview": true,
+  "seo": {
+    "content": {},
+    "architecture": {},
+    "html": {}
+  },
+  "img": {
+    "lazy": true,
+    "alt": true,
+    "title": true,
+    "webp": true,
+    "resize": false,
+    "mediaQuery": false
+  },
+  "html": {
+    "minify": false
+  },
+  "css": {
+    "async": true,
+    "purge": {
+      "safeClasses": ["/^owl-/", "sticky-navbar", "/^slicknav/", "show", "b24-form-sign-abuse-info", "b24-form-sign-info"],
+      "blockClasses": []
+    },
+    "minify": true,
+    "critical": true,
+    "combine": true
+  },
+  "js": {
+    "async": true,
+    "purge": false,
+    "minify": true,
+    "combine": false
+  },
+  "link": {
+    "relative": true,
+    "removeExtension": [".html", ".htm"],
+    "removeIndex": true
+  },
+  "attrAssetMap": ["data-image-src"]
+}

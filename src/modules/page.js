@@ -1,8 +1,15 @@
-import {CHARSET, documentRoot, DOT, project, projectPath, SEP} from "../constant.js";
+import {CHARSET, documentRoot, DOT, project, cachePath, SEP} from "../constant.js";
 import path from "path";
 import HTMLParser from "node-html-parser";
 import fetch from "node-fetch";
 import fs from "fs";
+
+export function normalizeUrl(url) {
+    return url
+        .replace(/([^.])\.\//g, '$1')
+        .replace(/\/{2,}/g, '/')
+        .replace(/\/index\/$/, '/index');
+}
 
 export const resolvePath = path => {
     return path
@@ -29,7 +36,7 @@ export class Page {
 
     src = {
         parent: null,
-        rootDir : projectPath + SEP + "src",
+        rootDir : cachePath + SEP + "src",
         filePath : null,
         webUrl: null,
         getFilePath(webUrl) {
@@ -41,7 +48,7 @@ export class Page {
     }
     dist = {
         parent: null,
-        rootDir : projectPath + SEP + "dist",
+        rootDir : documentRoot + SEP + "dist",
         filePath : null,
         webUrl: null,
         getFilePath(webUrl) {
@@ -51,34 +58,9 @@ export class Page {
             return resolvePath(filePath.replace(this.rootDir, "").replace(SEP + 'index.html', '')) || SEP;
         }
     }
-    local = {
-        parent: null,
-        rootDir : projectPath + SEP + "local",
-        filePath : null,
-        webUrl: null,
-        getFilePath(webUrl) {
-            return this.rootDir + webUrl.replace(this.parent.sourceRoot, "");
-        },
-        getWebUrl(filePath, ext = null, filename = null) {
-            const relativeUrl = filePath.replace(/(.*?)([?#].*)?$/, (match, pathname, params) => {
-                if (filename && pathname.endsWith(SEP) ) {
-                    pathname += filename;
-                }
-                if (ext && path.extname(pathname) === '') {
-                    pathname += ext;
-                }
 
-                return pathname + (params || "");
-            }).replace(/^\/+/, '');
-
-            return (DOT + DOT + SEP).repeat((this.webUrl.match(new RegExp(SEP, 'g')) || []).length)
-                + relativeUrl;
-        }
-    }
     constructor(url) {
-        this.url                    = url
-            .replace(/\/{2,}/g, '/')
-            .replace(/\/index\/$/, '/index');
+        this.url                    = normalizeUrl(url);
         this.isWeb                  = this.url.indexOf('http') === 0 || this.url.indexOf('file://') === 0;
         if (this.isWeb) {
             const url               = new URL(this.url);
@@ -96,9 +78,9 @@ export class Page {
             );
 
         } else {
-            const sourceRoot        = ["src", "dist", "local"].find(env => this.url.startsWith(projectPath + SEP + env));
+            const sourceRoot        = ["src", "dist", "local"].find(env => this.url.startsWith(cachePath + SEP + env));
 
-            this.sourceRoot         = sourceRoot ? projectPath + SEP + sourceRoot : documentRoot;
+            this.sourceRoot         = sourceRoot ? cachePath + SEP + sourceRoot : documentRoot;
             this.pathName           = path.dirname(this.url).replace(this.sourceRoot, '');
             this.extension          = path.extname(this.url);
             this.name               = path.basename(this.url, this.extension);
@@ -107,21 +89,21 @@ export class Page {
 
         this.src.parent         = this;
         this.dist.parent        = this;
-        this.local.parent       = this;
 
         this.src.filePath       = project.srcPath(this.webUrl);
         this.src.webUrl         = "";
         this.dist.filePath      = project.distPath(this.webUrl);
         this.dist.webUrl        = this.webUrl.replace(SEP + 'index.html', '') || SEP;
-        this.local.filePath     = project.localPath(this.webUrl);
-        this.local.webUrl       = this.webUrl.replace(SEP, '');
     }
+    async getDom() {
+        const html = this.isWeb
+            ? await fetch(this.url).then(res => res.text())
+            : fs.readFileSync(this.url, { encoding: CHARSET});
 
-    getDom() {
-        return HTMLParser.parse(
-            this.isWeb
-                ? /*await*/ fetch(this.url).then(res => res.text()) //todo: da sistemare l'async perche il fetch cosi non funziona
-                : fs.readFileSync(this.url, { encoding: CHARSET})
-        )
+        if (!html) {
+            throw new Error(`Page ${this.url} empty`);
+        }
+
+        return HTMLParser.parse(html);
     }
 }

@@ -7,23 +7,23 @@ import fs from "fs";
 const _assetsURLs       = {};
 const _filenameByCat    = {};
 
-export function crawler(page) {
-    const dom = page.getDom();
+export async function crawler(page) {
+    const dom = await page.getDom();
     const getAssetsByType = (attrAssetMap = []) => {
 
         const assetURLs = {
-            html        : [],
-            link        : [],
-            images      : [],
-            icons       : [],
-            stylesheets : [],
-            scripts     : [],
-            fonts       : [],
-            audios      : [],
-            videos      : [],
-            others      : [],
-            dom         : {},
-            source      : {},
+            html: [],
+            link: [],
+            images: [],
+            icons: [],
+            stylesheets: [],
+            scripts: [],
+            fonts: [],
+            audios: [],
+            videos: [],
+            others: [],
+            dom: {},
+            source: {},
         };
         const addAssetURLByDomElem = (url, {domElem, attrName, sourceFile = null}) => {
             if (url) {
@@ -46,7 +46,7 @@ export function crawler(page) {
                     });
                 }
             } else {
-               // Log.error(`- ASSET: Empty (${sourceFile || page.url}) --> ${domElem && domElem.toString()}`);
+                // Log.error(`- ASSET: Empty (${sourceFile || page.url}) --> ${domElem && domElem.toString()}`);
             }
         };
         const storeAssetUrl = (url, key) => {
@@ -57,60 +57,115 @@ export function crawler(page) {
                 return assetUrl;
             }
             const resolvePageHtml = (link) => {
+                if (page.isWeb
+                    && link.match(new RegExp("^(http|https|file):\/\/(www\\.)?" + page.sourceRoot))
+                ) {
+                    return link;
+                }
+
+                if (!/^[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=]+$/.test(link)) {
+                    Log.debug("STORE ASSET SKIP (NOLINK) " + page.url + " => " + link);
+                    return;
+                }
+                if(link.startsWith(DOT + SEP)) {
+                      link = link.substring(2)
+                }
                 const cleanUrl = link.replace(/\?.*$/, "").replace(/#.*$/, "");
                 const linkExt = path.extname(cleanUrl);
                 const extUrl = (linkExt === "" ? page.extension : "");
                 const url = (
-                    link.indexOf(SEP) === 0
+                    link.startsWith(SEP)
                         ? page.sourceRoot
-                        : page.sourceRoot + page.pathName + SEP
-                ) + (cleanUrl === SEP ? "" : cleanUrl);
+                        : page.sourceRoot + page.pathName
+                ) + (cleanUrl.startsWith(SEP) || cleanUrl.length === 0 ? cleanUrl : SEP + cleanUrl);
 
-                if(!["", ".html", ".htm"].includes(linkExt)) {
-                    Log.debug("STORE ASSET SKIP " + page.url + " => " + link);
-                } else if(page.isWeb
-                    && link.match(new RegExp("^(http|https|file):\/\/" + page.sourceRoot))
-                    && cleanUrl.length > 0
-                ) {
-                    return url;
-                } else if(page.isWeb
+                if (!["", ".html", ".htm"].includes(linkExt)) {
+                    Log.debug("STORE ASSET SKIP (NOHTML)" + page.url + " => " + link);
+                    return;
+                }
+
+                if (cleanUrl.indexOf(":") > 0) {
+                    Log.debug("STORE ASSET SKIP (EXTERNAL)" + page.url + " => " + link);
+                    return;
+                }
+
+                if (page.isWeb
                     && link.indexOf(":") === -1
                     && cleanUrl.length > 0
                 ) {
-                    return url;
-                } else if(!page.isWeb
+                    return link;
+                } else if (!page.isWeb
                     && fs.existsSync(url + extUrl)
                     && cleanUrl.length > 0
                 ) {
                     return url + extUrl;
-                } else if(!page.isWeb
-                    && linkExt === "" && fs.existsSync(url + SEP + "index" + extUrl)
+                } else if (!page.isWeb
+                    && linkExt === "" && fs.existsSync(url + SEP + "index" + page.extension)
+                ) {
+                    return url + SEP + "index" + page.extension;
+                }
+
+                Log.debug("NO ASSET " + page.url + " => " + link);
+
+/*
+                const cleanUrl = link.replace(/\?.*$/, "").replace(/#.*$/, "");
+                const linkExt = path.extname(cleanUrl);
+                const extUrl = (linkExt === "" ? page.extension : "");
+                const url = (
+                    link.startsWith(SEP)
+                        ? page.sourceRoot
+                        : page.sourceRoot + page.pathName + SEP
+                ) + (cleanUrl === SEP ? "" : cleanUrl);
+console.log(url, url + extUrl, url + SEP + "index" + page.extension, cleanUrl.length);
+                if (!["", ".html", ".htm"].includes(linkExt)) {
+                    Log.debug("STORE ASSET SKIP " + page.url + " => " + link);
+                } else if (page.isWeb
+                    && link.match(new RegExp("^(http|https|file):\/\/" + page.sourceRoot))
                     && cleanUrl.length > 0
                 ) {
-                    return url + SEP + "index" + extUrl;
+                    return link;
+                } else if (page.isWeb
+                    && link.indexOf(":") === -1
+                    && cleanUrl.length > 0
+                ) {
+                    return url;
+                } else if (!page.isWeb
+                    && fs.existsSync(url + extUrl)
+                    && cleanUrl.length > 0
+                ) {
+                    return url + extUrl;
+                } else if (!page.isWeb
+                    && linkExt === "" && fs.existsSync(url + SEP + "index" + page.extension)
+                    && cleanUrl.length > 0
+                ) {
+                    return url + SEP + "index" + page.extension;
                 } else {
+                    console.error("ERRORRR: "  + link);
+
                     Log.debug("NO ASSET " + page.url + " => " + link);
                 }
+*/
             }
 
-            const ext       = path.extname(url);
+            const ext = path.extname(url);
 
-            const support   = {
-                images          : [".jpg", ".jpeg", ".gif", ".png", ".webp", ".svg"],
-                fonts           : [".ttf", ".otf", ".woff", ".woff2", ".eot", ".svg"],
-                icons           : [".ico", ".svg"],
-                stylesheets     : [".css"],
-                scripts         : [".js"],
-                videos          : [".mp4", ".ogv", ".mpg", ".mpeg", ".avi", ".webm"],
-                audios          : [".mp3", ".ogg", ".wav", ".aac", ".webm"],
-                others          : [
-                                    ".pdf", ".txt", ".doc", ".docx",
-                                    ".xls", ".xlsx",
-                                    ".ppt", ".pptx",
-                                    ".zip", ".tar", ".rar",
-                                    ".xml", ".json", ".csv",
-                                ],
+            const support = {
+                images: [".jpg", ".jpeg", ".gif", ".png", ".webp", ".svg"],
+                fonts: [".ttf", ".otf", ".woff", ".woff2", ".eot", ".svg"],
+                icons: [".ico", ".svg"],
+                stylesheets: [".css"],
+                scripts: [".js"],
+                videos: [".mp4", ".ogv", ".mpg", ".mpeg", ".avi", ".webm"],
+                audios: [".mp3", ".ogg", ".wav", ".aac", ".webm"],
+                others: [
+                    ".pdf", ".txt", ".doc", ".docx",
+                    ".xls", ".xlsx",
+                    ".ppt", ".pptx",
+                    ".zip", ".tar", ".rar",
+                    ".xml", ".json", ".csv",
+                ],
             }
+
             let pageHtmlUrl;
             if (!url) {
                 Log.debug("ASSET EMPTY: " + page.url);
@@ -120,10 +175,10 @@ export function crawler(page) {
                 Log.debug("FIND HTML: " + page.url + " => " + url + " => " + pageHtmlUrl);
                 assetURLs.html.includes(pageHtmlUrl) || assetURLs.html.push(pageHtmlUrl);
                 return pageHtmlUrl;
-            } else if(["", ".html", ".htm"].includes(path.extname(url))) {
+            } else if (["", ".html", ".htm"].includes(path.extname(url))) {
                 assetURLs.link.includes(url) || assetURLs.link.push(url);
-            //} else if (isPageHtml(url, true)) {
-            //    Log.debug("FIND HTML: " + page.url + " => " + url);
+                //} else if (isPageHtml(url, true)) {
+                //    Log.debug("FIND HTML: " + page.url + " => " + url);
             } else if (!support[key]) {
                 for (let [supportKey, supportExt] of Object.entries(support)) {
                     if (supportExt.includes(ext)) {
@@ -136,13 +191,13 @@ export function crawler(page) {
                 Log.warn("NO ASSET: " + page.url + " => " + url);
             }
         };
-
+        const isAbsoluteURL = (url) => {
+            return url.startsWith(SEP) || url.startsWith(DOT + SEP) || url.startsWith('http');
+        };
         const resolveSrcPath = (asset) => {
-            const isAbsolutePath = asset.startsWith(SEP) || asset.startsWith(DOT + SEP);
-
             if (asset.startsWith('http')) {
                 return asset;
-            } else if (isAbsolutePath) {
+            } else if (isAbsoluteURL(asset)) {
                 return page.sourceRoot + asset;
             } else {
                 return page.sourceRoot + page.pathName + SEP + asset;
@@ -150,17 +205,17 @@ export function crawler(page) {
         };
 
         const retrieveURLs = async (asset, data = null) => {
-            const assetSrcPath      = resolveSrcPath(asset);
+            const assetSrcPath = resolveSrcPath(asset);
 
             if (_assetsURLs[assetSrcPath] === undefined) {
                 Log.debug(`EXTRACT URL FROM: ${assetSrcPath}`);
 
                 _assetsURLs[assetSrcPath] = [];
                 if (!data) {
-                    data = (page.isWeb || asset.startsWith('http')
-                            ? await fetch(assetSrcPath).then(res => res.text())
-                            : fs.readFileSync(assetSrcPath, {encoding: CHARSET})
-                    );
+                        data = (page.isWeb || asset.startsWith('http')
+                                ? await fetch(assetSrcPath).then(res => res.text())
+                                : fs.readFileSync(assetSrcPath, {encoding: CHARSET})
+                        );
                 }
 
                 //const regexUrl = /(?<!@import\s*)url\s*\(\s*['"]?\s*((?!data:)([^'"?#)]+)+)\s*['"]?\s*\)\s*/gi;
@@ -169,12 +224,12 @@ export function crawler(page) {
                 /**
                  * url([...])
                  */
-                const dictExt   = {
-                    ".ttf"          : "fonts",
-                    ".otf"          : "fonts",
-                    ".woff"         : "fonts",
-                    ".woff2"        : "fonts",
-                    ".eot"          : "fonts",
+                const dictExt = {
+                    ".ttf": "fonts",
+                    ".otf": "fonts",
+                    ".woff": "fonts",
+                    ".woff2": "fonts",
+                    ".eot": "fonts",
                 }
 
                 let extname;
@@ -195,11 +250,11 @@ export function crawler(page) {
             }
 
             for (const url of [...new Set(_assetsURLs[assetSrcPath])]) {
-                addAssetURLByDomElem(storeAssetUrl(path.dirname(assetSrcPath) + (url.startsWith(SEP) ? "": SEP) + url, _filenameByCat[path.parse(url).name] || "extract"),
-                {
-                    sourceFile: assetSrcPath,
-                    attrName: url
-                });
+                addAssetURLByDomElem(storeAssetUrl(isAbsoluteURL(url) ? url : path.dirname(assetSrcPath) + SEP + url, _filenameByCat[path.parse(url).name] || "extract"),
+                    {
+                        sourceFile: assetSrcPath,
+                        attrName: url
+                    });
             }
         };
 
@@ -215,24 +270,22 @@ export function crawler(page) {
                         case "canonical":
                             break;
                         case "stylesheet":
+                            //TODO: da verificare bene perche non si puo mettere dentro al then
                             addAssetURLByDomElem(storeAssetUrl(href, "stylesheets"),
                             {
                                 domElem: elem,
                                 attrName: "href"
                             });
-                            retrieveURLs(href).catch(err => {
-                                console.error(err);
-                                process.exit(0);
-                            });
+                            retrieveURLs(href).catch(error => {});
                             break;
                         case "icon":
                         case "shortcut icon":
                         case "apple-touch-icon":
                             addAssetURLByDomElem(storeAssetUrl(href, "icons"),
-                            {
-                                domElem: elem,
-                                attrName: "href"
-                            });
+                                {
+                                    domElem: elem,
+                                    attrName: "href"
+                                });
                             break;
                         default:
                     }
@@ -242,10 +295,10 @@ export function crawler(page) {
                         Log.debug("CRAWLER SKIP " + page.url + " => " + href);
                     } else {
                         addAssetURLByDomElem(storeAssetUrl(href, "a"),
-                        {
-                            domElem: elem,
-                            attrName: "href"
-                        });
+                            {
+                                domElem: elem,
+                                attrName: "href"
+                            });
                     }
                     break;
                 case "AREA":
@@ -262,31 +315,31 @@ export function crawler(page) {
             switch (elem.tagName) {
                 case "AUDIO":
                     addAssetURLByDomElem(storeAssetUrl(src, "audios"),
-                    {
-                        domElem: elem,
-                        attrName: "src"
-                    });
+                        {
+                            domElem: elem,
+                            attrName: "src"
+                        });
                     break;
                 case "IMG":
                     addAssetURLByDomElem(storeAssetUrl(src, "images"),
-                    {
-                        domElem: elem,
-                        attrName: "src"
-                    });
+                        {
+                            domElem: elem,
+                            attrName: "src"
+                        });
                     break;
                 case "SCRIPT":
                     addAssetURLByDomElem(storeAssetUrl(src, "scripts"),
-                    {
-                        domElem: elem,
-                        attrName: "src"
-                    });
+                        {
+                            domElem: elem,
+                            attrName: "src"
+                        });
                     break;
                 case "VIDEO":
                     addAssetURLByDomElem(storeAssetUrl(src, "videos"),
-                    {
-                        domElem: elem,
-                        attrName: "src"
-                    });
+                        {
+                            domElem: elem,
+                            attrName: "src"
+                        });
                     break;
                 case "EMBED":
                 case "IFRAME":
@@ -294,7 +347,7 @@ export function crawler(page) {
                 case "INPUT":
                 case "TRACK":
                 case "SOURCE":
-                    //usato in video audio picture, track
+                //usato in video audio picture, track
                 default:
             }
         });
@@ -305,33 +358,33 @@ export function crawler(page) {
         dom.querySelectorAll('*[content]').forEach((elem) => {
             switch (elem.tagName) {
                 case "META":
-                    const property  = elem.getAttribute("property") || elem.getAttribute("name") || "";
-                    const content   = elem.getAttribute("content");
+                    const property = elem.getAttribute("property") || elem.getAttribute("name") || "";
+                    const content = elem.getAttribute("content");
 
-                    if(property.endsWith(":image")) {
+                    if (property.endsWith(":image")) {
                         addAssetURLByDomElem(storeAssetUrl(content, "images"),
-                        {
-                            domElem: elem,
-                            attrName: "content"
-                        });
-                    } else if(property.endsWith(":video")) {
+                            {
+                                domElem: elem,
+                                attrName: "content"
+                            });
+                    } else if (property.endsWith(":video")) {
                         addAssetURLByDomElem(storeAssetUrl(content, "videos"),
-                        {
-                            domElem: elem,
-                            attrName: "content"
-                        });
-                    } else if(property.endsWith(":audio")) {
+                            {
+                                domElem: elem,
+                                attrName: "content"
+                            });
+                    } else if (property.endsWith(":audio")) {
                         addAssetURLByDomElem(storeAssetUrl(content, "audios"),
-                        {
-                            domElem: elem,
-                            attrName: "content"
-                        });
+                            {
+                                domElem: elem,
+                                attrName: "content"
+                            });
                     } else {
                         addAssetURLByDomElem(storeAssetUrl(content, "meta"),
-                        {
-                            domElem: elem,
-                            attrName: "content"
-                        });
+                            {
+                                domElem: elem,
+                                attrName: "content"
+                            });
                     }
                     break;
                 case "DATA":
@@ -353,11 +406,10 @@ export function crawler(page) {
         /**
          * attr style
          */
-        const elements              = dom.querySelectorAll('*[style]');
-        const inlineStyles    = [...elements].map(element => element.getAttribute('style')).join('; ');
-        retrieveURLs(page.webUrl, inlineStyles).catch(err => {
-            console.error(err);
-            process.exit(0);
+        const elements = dom.querySelectorAll('*[style]');
+        const inlineStyles = [...elements].map(element => element.getAttribute('style')).join('; ');
+        retrieveURLs(page.webUrl, inlineStyles).catch(error => {
+            Log.error(`- HTML: ${error.message} (${page.webUrl})`);
         });
 
         /**
@@ -366,10 +418,10 @@ export function crawler(page) {
         attrAssetMap.forEach((attr) => {
             dom.querySelectorAll(`*[${attr}]`).forEach((elem) => {
                 addAssetURLByDomElem(storeAssetUrl(elem.getAttribute(attr), "assetMap"),
-                {
-                    domElem: elem,
-                    attrName: attr
-                });
+                    {
+                        domElem: elem,
+                        attrName: attr
+                    });
             });
         });
 
@@ -377,10 +429,11 @@ export function crawler(page) {
     };
 
     return {
-        scrape : ({
-                      attrAssetMap          = [],
-                      onRetrieveAssets      = () => {},
-                  }
+        scrape: ({
+                     attrAssetMap = [],
+                     onRetrieveAssets = () => {
+                     },
+                 }
         ) => {
             const assetsByType = getAssetsByType(attrAssetMap);
 

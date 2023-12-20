@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {SEP, project, DOT, projectPath} from '../constant.js';
+import {SEP, project, DOT} from '../constant.js';
 import {Log, Stats} from "./log.js";
 import fetch from "node-fetch";
 
@@ -9,7 +9,7 @@ const securityBaseDir = (userPath) => {
         throw new Error("Security violation: " + userPath);
     }
 
-    if (userPath.indexOf(project.basePath) !== 0) {
+    if (userPath.indexOf(project.cachePath) !== 0 && userPath.indexOf(project.documentRoot) !== 0) {
         throw new Error("Security violation: " + userPath);
     }
 }
@@ -21,6 +21,25 @@ const mkdir = (dstFilePath) => {
     }
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export async function fetchWithRetry(url, options = undefined, maxRetries = 3) {
+    return fetch(url, options)
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+
+            if (maxRetries > 0) {
+                return sleep(500)
+                    .then(() => fetchWithRetry(url, options, maxRetries - 1));
+            }
+
+            return {};
+        });
+}
 export async function findSync({
     srcPath,
     filterExt  = [],
@@ -82,7 +101,7 @@ export async function find({
 }
 
 //rsync -avm --include '*/' --include '*.css' --exclude '*' src/ dist
-export function cp({
+export function cp_old({
         srcPath,
         dstPath,
         filterExt = [],
@@ -104,7 +123,7 @@ export function cp({
         });
 }
 
-export async function save(dstFilePath, data, async = true) {
+export async function save_old(dstFilePath, data, async = true) {
     if (!Stats.isset(dstFilePath, "fsWrite")) {
         const dstDirname = path.dirname(dstFilePath);
         if (!fs.existsSync(dstDirname)) {
@@ -124,17 +143,22 @@ export async function save(dstFilePath, data, async = true) {
 export async function saveData(dstFilePath, data, tag = "origin") {
     if (!Stats.isset(dstFilePath, tag)) {
         Log.debug(`- SAVE ${dstFilePath}`);
-
         Stats.save(dstFilePath, tag, -1);
         mkdir(dstFilePath);
         return (typeof data.then === 'function')
             ? data.then(data => {
                 return fs.promises.writeFile(dstFilePath, data).then(() => {
+                    if (!data.length) {
+                        Log.warn(`- EMPTY ${dstFilePath}`);
+                    }
                     Stats.save(dstFilePath,tag, data.length);
                     return {srcFilePath: null, data: data};
                 })
             })
             : fs.promises.writeFile(dstFilePath, data).then(() => {
+                if (!data.length) {
+                    Log.warn(`- EMPTY ${dstFilePath}`);
+                }
                 Stats.save(dstFilePath,tag, data.length);
                 return {srcFilePath: null, data: data};
             });
@@ -155,6 +179,9 @@ export async function saveFetch(dstFilePath, srcFetchPath, tag = "origin") {
             .then(body => {
                 mkdir(dstFilePath);
                 return fs.promises.writeFile(dstFilePath, body).then(() => {
+                    if (!body.length) {
+                        Log.warn(`- EMPTY ${dstFilePath}`);
+                    }
                     Stats.save(dstFilePath, tag, body.length);
                     return {srcFilePath: srcFetchPath, data: body};
                 });
@@ -175,7 +202,11 @@ export async function saveFile(dstFilePath, srcFilePath, tag = "origin") {
         mkdir(dstFilePath);
 
         return fs.promises.copyFile(srcFilePath, dstFilePath).then(() => {
-            Stats.save(dstFilePath, tag, fs.statSync(dstFilePath).size);
+            const size = fs.statSync(dstFilePath).size;
+            if (!size) {
+                Log.warn(`- EMPTY ${srcFilePath}`);
+            }
+            Stats.save(dstFilePath, tag, size);
             return {srcFilePath, data: fs.readFileSync(dstFilePath).toString()};
         });
     } else {
@@ -201,6 +232,18 @@ const rm = (folderPath) => {
     }
 }
 
+export function touch(path) {
+    fs.writeFileSync(path, '');
+}
 export function deleteProject(environment) {
-    rm(projectPath + SEP + environment);
+    switch (environment) {
+        case "src":
+            rm(project.srcPath());
+            break;
+        case "dist":
+            rm(project.distPath());
+            break;
+        default:
+            throw new Error(`Unknown environment ${environment}`);
+    }
 }

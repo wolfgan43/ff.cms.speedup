@@ -32,29 +32,21 @@ if (process.argv.length <= 2) {
 }
 const args          = process.argv.slice(2);
 export const documentRoot  = args[0];
-export const projectName   = path.resolve(documentRoot).replace(/\\/g, SEP).split(SEP).pop();
-export const projectPath   = DOT + SEP + "projects" + SEP + projectName;
-export const sitePath      = args[1] || '';
-
+export const projectName   = args[1] ?? path.resolve(documentRoot).replace(/\\/g, SEP).split(SEP).pop();
+export const cachePath   = DOT + SEP + "cache" + SEP + projectName;
 export const srcAssetPath  = documentRoot + ASSET_PATH;
 
 export const project = {
     name : projectName,
-    basePath: projectPath,
+    cachePath: cachePath,
+    documentRoot: documentRoot,
     srcPath: (path = "") => {
-        return projectPath + SEP + "src" + path
-    },
-    localPath: (path = "") => {
-        return projectPath + SEP + "local" + path
+        return cachePath + SEP + "src" + path
     },
     distPath: (path = "") => {
-        return projectPath + SEP + "dist" + path
+        return documentRoot + SEP + "dist" + path
     }
 };
-
-export function getSaveFilePath(path, bucket = SEP + "src") {
-    return projectPath + bucket + path;
-}
 
 if (!fs.existsSync(srcAssetPath)) {
     console.error(`ERR: Missing ${srcAssetPath} folder in your website`);

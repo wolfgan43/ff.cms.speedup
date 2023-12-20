@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {CHARSET, project, SEP} from '../constant.js';
+import {CHARSET, DOT, project, SEP} from '../constant.js';
 import HTMLParser from 'node-html-parser';
 import {minify as HTMLMinifier} from 'html-minifier-terser';
 import * as css from './seo/css.js';
@@ -47,6 +47,26 @@ export function seo(urls) {
     };
 
     const change = (files, type) => {
+        const changePathByOrigin = (destination, origin) => {
+            const destinationParts = path.dirname(destination).replace(project.distPath(), "").split(SEP);
+            const originParts = path.dirname(origin).replace(project.srcPath(), "").split(SEP);
+
+            // Rimuovi le parti comuni tra il percorso assoluto e il percorso di riferimento
+            while (destinationParts[0] === originParts[0] && destinationParts.length > 0) {
+                destinationParts.shift();
+                originParts.shift();
+            }
+
+            if (destinationParts.length === 0) {
+                return originParts.join(SEP);
+            }
+
+            return destinationParts
+                .map(() => '..')
+                .concat(originParts)
+                .join(SEP);
+        };
+
         const changeOne = (fileDst, fileSrc = null) => {
             const replacements = (buffer[type][fileSrc]
                     ? {fileSrc: buffer[type][fileSrc]}
@@ -55,7 +75,7 @@ export function seo(urls) {
 
             let fileContent = fs.readFileSync(fileDst, CHARSET);
             for (const origin in replacements) {
-                fileContent = changeData(fileContent, replacements[origin]);
+                fileContent = changeData(fileContent, replacements[origin], changePathByOrigin(fileDst, origin));
             }
             fs.writeFileSync(fileDst, fileContent, CHARSET);
         }
@@ -69,19 +89,58 @@ export function seo(urls) {
         });
     };
 
-    const changeData = (content, replacements) => {
+    const changeData = (content, replacements, prefix = null) => {
+        const getRelativePath = (path) => {
+            return prefix + SEP + (path.startsWith(DOT + SEP)
+                ? path.substring(2)
+                : path
+            );
+        }
         for (const src in replacements) {
-            content = content.replaceAll(src, replacements[src]);
+            content = content.replaceAll(src, prefix ? getRelativePath(replacements[src]) : replacements[src]);
         }
 
         return content;
     }
+    const arr2regexp = (arr) => {
+        return (arr || []).map(str => {
+            return str.startsWith(SEP) ? new RegExp(str.slice(1)) : str;
+        })
+    }
     const optimize = async (page, options) => {
         const onRetrieveAssets = (assets, dom) => {
-            const setWebUrl = (url, defaultExt = null, defaultFilename = null) => {
-                return (options.preview
-                    ? page.local.getWebUrl(url, defaultExt, defaultFilename)
-                    : url
+            const getRelativePath = (assetWebUrl, sourceFile) => {
+                if(assetWebUrl.startsWith(DOT + SEP) || assetWebUrl === SEP) {
+                    return assetWebUrl;
+                }
+
+                const assetParts = assetWebUrl.split(SEP);
+                const sourceParts = page.src.getWebUrl(path.dirname(sourceFile)).split(SEP);
+
+                while (assetParts[0] === sourceParts[0]) {
+                    assetParts.shift();
+                    sourceParts.shift();
+                }
+
+                if (sourceParts.length === 0) {
+                    return DOT + SEP + assetParts.join(SEP);
+                }
+
+                return sourceParts
+                    .map(() => '..')
+                    .concat(assetParts)
+                    .join(SEP);
+            };
+            const setWebUrl = (url) => {
+                let modifiedUrl = options.link.removeExtension.reduce((acc, ext) => acc.replace(new RegExp(`${ext}$`, 'i'), ''), url);
+
+                if (options.link.removeIndex) {
+                    modifiedUrl = modifiedUrl.replace(/\/index(\.[a-zA-Z0-9]{2,5})?$/i, '/');
+                }
+
+                return (options.link.relative
+                    ? getRelativePath(modifiedUrl, page.url)
+                    : modifiedUrl
                 );
             }
             const setDomElem = (urls, onDomElem) => {
@@ -91,22 +150,7 @@ export function seo(urls) {
                     });
                 }
             };
-            const getRelativePath = (assetWebUrl, souceFileWebUrl) => {
-                const assetParts = assetWebUrl.split(SEP);
-                const sourceParts = souceFileWebUrl.split(SEP);
 
-                // Rimuovi le parti comuni tra il percorso assoluto e il percorso di riferimento
-                while (assetParts[0] === sourceParts[0]) {
-                    assetParts.shift();
-                    sourceParts.shift();
-                }
-
-                // Crea il percorso relativo utilizzando i punti di sospensione (..)
-                return sourceParts
-                    .map(() => '..')
-                    .concat(assetParts)
-                    .join(SEP);
-            };
             const setSource = (assetFilePath, assetWebUrl) => {
                 assets.source[assetFilePath] && assets.source[assetFilePath].forEach((data) => {
                     const type = (data.sourceFile.endsWith(".css")
@@ -117,7 +161,7 @@ export function seo(urls) {
                     if (!buffer[type][data.sourceFile]) {
                         buffer[type][data.sourceFile] = {};
                     }
-                    buffer[type][data.sourceFile][data.src] = getRelativePath(assetWebUrl, page.src.getWebUrl(path.dirname(data.sourceFile)));
+                    buffer[type][data.sourceFile][data.src] = getRelativePath(assetWebUrl, data.sourceFile);
                 });
             }
             const scripts = async () => {
@@ -228,7 +272,7 @@ export function seo(urls) {
                 }
             };
             const stylesheets = async () => {
-                const onLoadCSS         = "if(media!='all')media='all'";
+                const onLoadCSS         = "if(media!=='all')media='all'";
 
                 Log.debug(`- OPTIMIZE CSS`);
                 if (options.css.combine) {
@@ -241,8 +285,8 @@ export function seo(urls) {
                             ? ` media="print" onload="${onLoadCSS}"`
                             : ''
                     );
+
                     const combinedStylesheet = css.combine(assets.stylesheets);
-                    Log.write(`- CSS Combine Size: (${combinedStylesheet.length} bytes)`, page.dist.filePath);
 
                     /**
                      * Critical CSS
@@ -255,6 +299,7 @@ export function seo(urls) {
                                 stylesheets: assets.stylesheets,
                             }).then(({css, uncritical}) => {
                                 Log.write(`- HTML Add Critical Style Inline: (${css.length} bytes)`, page.dist.filePath);
+
                                 dom.querySelector("head").appendChild(HTMLParser.parse(
                                     `<style>${css}</style>`
                                 ));
@@ -283,8 +328,8 @@ export function seo(urls) {
                         stylesheetUncritical = await css.purgeStyle({
                             html: dom.toString(),
                             style: stylesheetUncritical,
-                            safeClasses: options.css.purge.safeClasses,
-                            blockClasses: options.css.purge.blockClasses,
+                            safeClasses: arr2regexp(options.css.purge.safeClasses),
+                            blockClasses: arr2regexp(options.css.purge.blockClasses),
                         }).then((stylesheet) => {
                             Log.write(`- CSS Combine Purge: (${stylesheet.length} bytes)`, page.dist.filePath);
                             return stylesheet;
@@ -311,6 +356,7 @@ export function seo(urls) {
                      */
                     const stylesheetUrl = page.dist.getWebUrl(stylesheetFilePath);
                     Log.write(`- HTML Add CSS Combine${stylesheetAsync ? ' (Async)' : ''}: ${stylesheetUrl}`, page.dist.filePath);
+
                     dom.querySelector("head").appendChild(HTMLParser.parse(
                         `<link rel="stylesheet" href="${setWebUrl(stylesheetUrl)}"${stylesheetAsync}/>`
                     ));
@@ -444,29 +490,28 @@ export function seo(urls) {
                     });
                 }
             }
-
             const icons = async () => {
                 for (const icon of assets.icons) {
                     if (!Stats.isset(icon, "icons")) {
                         Stats.save(icon, "icons", -1);
                         if(fs.existsSync(icon)) {
-                            const imgOptimized = image.optimize(icon, options.img);
-                            const imageFilePath = path.dirname(page.dist.getFilePath(icon)) + SEP + imgOptimized.imageBaseName;
-                            const imageWebUrl = page.dist.getWebUrl(imageFilePath);
+                            const iconOptimized = image.optimize(icon, options.img);
+                            const iconFilePath = path.dirname(page.dist.getFilePath(icon)) + SEP + iconOptimized.imageBaseName;
+                            const iconWebUrl = page.dist.getWebUrl(iconFilePath);
                             /**
                              * Write buffer img: new dst, metadata
                              */
                             buffer.assets[icon] = {
-                                dst: imageWebUrl,
+                                dst: iconWebUrl,
                                 metadata: null
                             };
 
                             /**
                              * Write buffer foreach sourceFile (stylesheet, html)
                              */
-                            setSource(icon, imageWebUrl);
+                            setSource(icon, iconWebUrl);
 
-                            clone.saveData(imageFilePath, await imgOptimized.buffer, "iconsOptimized");
+                            clone.saveData(iconFilePath, await iconOptimized.buffer, "iconsOptimized");
                         } else {
                             Log.error(`- ASSET: Not Found (${icon}) --> ${page.url}`, page.dist.filePath);
                         }
@@ -489,7 +534,6 @@ export function seo(urls) {
                     });
                 }
             }
-
             const cp = async (assetTypes, onSaveData = null) => {
                 for(const type of assetTypes) {
                     for (const asset of assets[type]) {
@@ -524,7 +568,7 @@ export function seo(urls) {
                 setDomElem(assets.html, (domElem, attrName) => {
                     const href = domElem.getAttribute(attrName);
 
-                    domElem.setAttribute(attrName, setWebUrl(href, ".html", "index"))
+                    domElem.setAttribute(attrName, setWebUrl(href))
                 });
 
                 const html = changeData(pageCrawled.dom.toString(), buffer.html[page.url] || []);
@@ -553,7 +597,7 @@ export function seo(urls) {
         Log.debug(`SEO SPEEDUP: ${page.url}`);
         Log.write(`- HTML Dom Loaded: ${page.url}`, page.dist.filePath);
 
-        const pageCrawled = crawler(page).scrape({
+        const pageCrawled = (await crawler(page)).scrape({
             attrAssetMap: options.attrAssetMap,
         });
 
@@ -583,8 +627,8 @@ export function seo(urls) {
                     css.purgeFiles({
                         contents: Stats.get("htmlOptimized"),
                         stylesheets: stylesheets,
-                        safeClasses: options.css.purge.safeClasses,
-                        blockClasses: options.css.purge.blockClasses
+                        safeClasses: arr2regexp(options.css.purge.safeClasses),
+                        blockClasses: arr2regexp(options.css.purge.blockClasses)
                     }).then(() => {
                         Log.write(`CSS Purge Stylesheets: ${printArray(stylesheets)}`);
                         Stats.log("speedup"); //todo: da togliere
