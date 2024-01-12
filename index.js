@@ -6,7 +6,7 @@ import {generateSitemap} from "./src/modules/seo/sitemap.js";
 spider()
     .clone()
     .then((urlsCloned) => {
-        emitter.setMaxListeners(20);
+        //emitter.setMaxListeners(20);
         seo(urlsCloned).speedUp()
             .then((resources) => {
                 generateSitemap(resources.htmlOptimized);

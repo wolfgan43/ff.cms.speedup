@@ -1,7 +1,7 @@
 import {documentRoot, project} from "../constant.js";
 import {crawler} from "./crawler.js";
-import {Log, Stats} from "./log.js";
-import * as clone from "./clone.js";
+import {Log, Stats} from "../libs/log.js";
+import * as clone from "../libs/clone.js";
 import {normalizeUrl, Page} from "./page.js";
 
 export function spider() {

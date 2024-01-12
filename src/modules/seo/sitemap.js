@@ -9,11 +9,24 @@ const countChar = (string, char = SEP) => {
     return (string.match(new RegExp(char, 'g')) || []).length;
 }
 export function generateSitemap(urls) {
-    const currentDate = new Date().toISOString();
+    const currentDate = new Date();
+
+    const year = currentDate.getUTCFullYear();
+    const month = String(currentDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getUTCDate()).padStart(2, '0');
+    const hours = String(currentDate.getUTCHours()).padStart(2, '0');
+    const minutes = String(currentDate.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(currentDate.getUTCSeconds()).padStart(2, '0');
+    const lastmod = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+00:00`;
+
     const excludePatterns = [/404/];
 
     const xmlHeader = '<?xml version="1.0" encoding="UTF-8"?>';
-    const urlsetHeader = '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+    const urlsetHeader = `<urlset
+      xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+            http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">`;
     const urlsetFooter = '</urlset>';
 
     const formattedUrls = urls
@@ -30,19 +43,21 @@ export function generateSitemap(urls) {
         }
     })
     .map((url) => {
-        const priorityFactor = 0.2;
-        const lastmod = currentDate;
-        const priority = 1.0 - countChar((url.endsWith(SEP) ? url.slice(0, -1) : url)) * priorityFactor;
+        const separatorCount = countChar((url.endsWith(SEP) ? url.slice(0, -1) : url), SEP);
+        const priority = Math.pow(0.8, separatorCount);
 
         return `
-  <url>
-    <loc>${project.options.host + url}</loc>
-    <lastmod>${lastmod}</lastmod>
-    <priority>${priority.toFixed(2)}</priority>
-  </url>`;
+<url>
+  <loc>${project.options.host + url}</loc>
+  <lastmod>${lastmod}</lastmod>
+  <priority>${priority.toFixed(2)}</priority>
+</url>`;
     }).join('');
 
-    const sitemapContent = `${xmlHeader}\n${urlsetHeader}${formattedUrls}\n${urlsetFooter}`;
+    const sitemapContent = `${xmlHeader}
+${urlsetHeader}
+${formattedUrls}
+${urlsetFooter}`;
     const sitemapPath = SEP + 'sitemap.xml';
     const outputPath = project.distPath(sitemapPath);
     fs.writeFileSync(outputPath, sitemapContent);
@@ -58,7 +73,11 @@ const generateRobotsTxt = (sitemapPath) => {
         console.log('Skipping robots.txt generation: host option not found');
         return;
     }
-    const robotsTxtContent = `User-agent: *\nAllow: /\n\nSitemap: ${project.options.host + sitemapPath}\n`;
+    const robotsTxtContent = `User-agent: *
+Allow: /
+Disallow: /cdn-cgi
+
+Sitemap: ${project.options.host + sitemapPath}`;
     const outputPath = project.distPath(SEP + 'robots.txt');
 
     fs.writeFileSync(outputPath, robotsTxtContent);

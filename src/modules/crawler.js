@@ -1,5 +1,5 @@
 import path from "path";
-import {Log} from "./log.js";
+import {Log} from "../libs/log.js";
 import {CHARSET, DOT, SEP} from "../constant.js";
 import fetch from "node-fetch";
 import fs from "fs";
@@ -107,44 +107,6 @@ export async function crawler(page) {
 
                 Log.debug("NO ASSET " + page.url + " => " + link);
 
-/*
-                const cleanUrl = link.replace(/\?.*$/, "").replace(/#.*$/, "");
-                const linkExt = path.extname(cleanUrl);
-                const extUrl = (linkExt === "" ? page.extension : "");
-                const url = (
-                    link.startsWith(SEP)
-                        ? page.sourceRoot
-                        : page.sourceRoot + page.pathName + SEP
-                ) + (cleanUrl === SEP ? "" : cleanUrl);
-console.log(url, url + extUrl, url + SEP + "index" + page.extension, cleanUrl.length);
-                if (!["", ".html", ".htm"].includes(linkExt)) {
-                    Log.debug("STORE ASSET SKIP " + page.url + " => " + link);
-                } else if (page.isWeb
-                    && link.match(new RegExp("^(http|https|file):\/\/" + page.sourceRoot))
-                    && cleanUrl.length > 0
-                ) {
-                    return link;
-                } else if (page.isWeb
-                    && link.indexOf(":") === -1
-                    && cleanUrl.length > 0
-                ) {
-                    return url;
-                } else if (!page.isWeb
-                    && fs.existsSync(url + extUrl)
-                    && cleanUrl.length > 0
-                ) {
-                    return url + extUrl;
-                } else if (!page.isWeb
-                    && linkExt === "" && fs.existsSync(url + SEP + "index" + page.extension)
-                    && cleanUrl.length > 0
-                ) {
-                    return url + SEP + "index" + page.extension;
-                } else {
-                    console.error("ERRORRR: "  + link);
-
-                    Log.debug("NO ASSET " + page.url + " => " + link);
-                }
-*/
             }
 
             const ext = path.extname(url);
@@ -348,7 +310,48 @@ console.log(url, url + extUrl, url + SEP + "index" + page.extension, cleanUrl.le
                 case "INPUT":
                 case "TRACK":
                 case "SOURCE":
-                //usato in video audio picture, track
+                    switch (elem.parentNode.tagName) {
+                        case "VIDEO":
+                            addAssetURLByDomElem(storeAssetUrl(src, "videos"),
+                                {
+                                    domElem: elem,
+                                    attrName: "src"
+                                });
+                            break;
+                        case "AUDIO":
+                            addAssetURLByDomElem(storeAssetUrl(src, "audios"),
+                                {
+                                    domElem: elem,
+                                    attrName: "src"
+                                });
+                            break;
+                        case "PICTURE":
+                            addAssetURLByDomElem(storeAssetUrl(src, "images"),
+                                {
+                                    domElem: elem,
+                                    attrName: "src"
+                                });
+                            break;
+                        default:
+                    }
+                    break;
+                default:
+            }
+        });
+
+        /**
+         * attr poster
+         */
+        dom.querySelectorAll('*[poster]').forEach((elem) => {
+            const poster = elem.getAttribute("poster");
+            switch (elem.tagName) {
+                case "VIDEO":
+                    addAssetURLByDomElem(storeAssetUrl(poster, "images"),
+                        {
+                            domElem: elem,
+                            attrName: "poster"
+                        });
+                    break;
                 default:
             }
         });

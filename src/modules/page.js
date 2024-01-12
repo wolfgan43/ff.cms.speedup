@@ -81,7 +81,7 @@ export class Page {
             );
 
         } else {
-            const sourceRoot        = ["src", "dist", "local"].find(env => this.url.startsWith(cachePath + SEP + env));
+            const sourceRoot        = ["src", "dist"].find(env => this.url.startsWith(cachePath + SEP + env));
 
             this.sourceRoot         = sourceRoot ? cachePath + SEP + sourceRoot : documentRoot;
             this.pathName           = path.dirname(this.url).replace(this.sourceRoot, '');

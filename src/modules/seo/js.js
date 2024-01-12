@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
 import {CHARSET, JS_PATH, SEP} from "../../constant.js";
-import {Log, Stats} from "../log.js";
-import * as clone from "../clone.js";
+import {Log, Stats} from "../../libs/log.js";
+import * as clone from "../../libs/clone.js";
 import * as terser from "terser";
 
 function minify(js) {

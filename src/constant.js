@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import * as dotenv from 'dotenv';
 dotenv.config();
 export const CHARSET        = 'utf8';
@@ -32,7 +31,7 @@ if (process.argv.length <= 2) {
 }
 const args          = process.argv.slice(2);
 export const documentRoot  = args[0];
-export const projectName   = args[1] ?? path.resolve(documentRoot).replace(/\\/g, SEP).split(SEP).pop();
+export const projectName   = args[1] ?? documentRoot.replaceAll(DOT, '').replaceAll(SEP, '-').replace(/^-+|-+$/g, '')
 export const cachePath   = DOT + SEP + "cache" + SEP + projectName;
 export const srcAssetPath  = documentRoot + ASSET_PATH;
 
@@ -44,9 +43,9 @@ const loadOptions = () => {
     }
 
     try {
-        return {...JSON.parse(fs.readFileSync(DOT + SEP + 'options.json'), {encoding: CHARSET}), ...getProjectOptions()};
+        return {...JSON.parse(fs.readFileSync(DOT + SEP + 'config.json'), {encoding: CHARSET}), ...getProjectOptions()};
     } catch (error) {
-        console.error('Errore durante la lettura del file options.json', error);
+        console.error('Errore durante la lettura del file config.json', error);
         process.exit(1);
     }
 }

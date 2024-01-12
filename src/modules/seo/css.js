@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {PurgeCSS} from 'purgecss'
-import * as clone from '../clone.js';
+import * as clone from '../../libs/clone.js';
 import {generate} from "critical";
 import CleanCSS from "clean-css";
 
@@ -12,7 +12,7 @@ import {
     HTML_REGEXP,
     SEP,
 } from '../../constant.js';
-import {Log, Stats} from "../log.js";
+import {Log, Stats} from "../../libs/log.js";
 
 
 export async function purgeStyle({

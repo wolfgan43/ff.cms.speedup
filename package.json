@@ -3,6 +3,8 @@
   "type": "module",
   "version": "1.0.0",
   "description": "Optmin",
+  "author": "Wolfgan",
+  "license": "Apache-2.0",
   "main": "index.js",
   "bin": "index.js",
   "pkg": {
@@ -15,8 +17,6 @@
   "scripts": {
     "build": "node index.js"
   },
-  "author": "Wolfgan",
-  "license": "MIT",
   "engines": {
     "node": ">=21.0.0",
     "npm": ">=8.15.0"
