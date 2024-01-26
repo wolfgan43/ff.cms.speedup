@@ -105,6 +105,9 @@ const generateHeaders = () => {
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
 `;
     const outputPath = project.distPath(SEP + '_headers');
 
