@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import {CHARSET, DOT, project, SEP} from '../constant.js';
+import {ASSET_PATH, CHARSET, DOT, project, SEP} from '../constant.js';
 import HTMLParser from 'node-html-parser';
 import {minify as HTMLMinifier} from 'html-minifier-terser';
 import * as css from './seo/css.js';
@@ -91,6 +91,10 @@ export function seo(urls) {
     const optimize = async (page) => {
         const onRetrieveAssets = (assets, dom) => {
             const getRelativePath = (assetWebUrl, sourceFile) => {
+                if(assetWebUrl.startsWith(ASSET_PATH) && !page.src.getWebUrl(sourceFile).startsWith(ASSET_PATH)) {
+                    return assetWebUrl;
+                }
+
                 if(assetWebUrl.startsWith(DOT + SEP) || assetWebUrl === SEP) {
                     return assetWebUrl;
                 }
