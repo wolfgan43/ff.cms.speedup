@@ -6,7 +6,8 @@ import * as clone from "../../libs/clone.js";
 import * as terser from "terser";
 
 function minify(js) {
-    return terser.minify(js).then(minified => {
+    //todo: ce un errore nelle promise. Non sono gestite in seo correttamente e questa func deve essere async
+    return terser.minify(js,  { sourceMap: false }).then(minified => {
         return minified.code;
     });
 }

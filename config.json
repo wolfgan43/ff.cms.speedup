@@ -41,5 +41,6 @@
     "removeExtension": [".html", ".htm"],
     "removeIndex": true
   },
-  "attrAssetMap": ["data-image-src"]
+  "attrAssetMap": ["data-image-src"],
+  "debug": false
 }

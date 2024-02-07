@@ -5,41 +5,52 @@ import * as svgo from "svgo";
 
 import puppeteer from 'puppeteer';
 
-
 const img = (imagePath, options = {
     webp: false,
 }) => {
-    let imageExt = path.extname(imagePath);
+    const imageExt = path.extname(imagePath);
     const imageFileName = path.basename(imagePath, imageExt);
     const imageBuffer = fs.readFileSync(imagePath);
     const image = sharp(imageBuffer);
+    const imageFileExt = options.webp && ![".webp"].includes(imageExt) ? ".webp" : imageExt;
 
-    if (options.webp && ![".webp"].includes(imageExt)) {
-        imageExt = ".webp";
-        image.webp({
+    const toBuffer = async (image) => {
+        const webpOptions = {
             quality: 100,
             alphaQuality: 100,
             lossless: true,
             // nearLossless: 100, //non funzia
             smartSubsample: true,
             reductionEffort: 6,
-        });
+        };
+        return options.webp && ![".webp"].includes(imageExt)
+            ? image.webp(webpOptions).toBuffer()
+            : image.toBuffer();
     }
 
     return {
-        imageBaseName: imageFileName + imageExt,
-        buffer : image.toBuffer(),
-        metadata: image.metadata()
+        imageBaseName: (resolution) => resolution
+            ? imageFileName + "-" + resolution + imageFileExt
+            : imageFileName + imageFileExt,
+        buffer : (resolution = null) => toBuffer(resolution
+            ? image.resize(resolution)
+            : image),
+        metadata: async () => await sharp(imageBuffer).metadata(),
+        isResponsive    : true
     };
 }
 const svg = (imagePath) => {
     const imageBuffer = fs.readFileSync(imagePath);
-    const svgString = imageBuffer.toString();
 
     return {
-        imageBaseName: path.basename(imagePath),
-        buffer : svgo.optimize(svgString).data,
-        metadata: null
+        imageBaseName   : () => path.basename(imagePath),
+        buffer          : async () => {
+            const svgString = imageBuffer.toString();
+
+            return svgo.optimize(svgString).data
+        },
+        metadata: async () => await sharp(imageBuffer).metadata(),
+        isResponsive    : false
     };
 }
 

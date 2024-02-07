@@ -9,6 +9,6 @@ spider()
         //emitter.setMaxListeners(20);
         seo(urlsCloned).speedUp()
             .then((resources) => {
-                generateSitemap(resources.htmlOptimized);
+                resources.htmlOptimized && generateSitemap(resources.htmlOptimized);
             });
     });

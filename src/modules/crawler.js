@@ -24,6 +24,14 @@ export async function crawler(page) {
             others: [],
             dom: {},
             source: {},
+            embed: {
+                scripts: [],
+                styles: [],
+            },
+            system: {
+                scripts: [],
+                styles: [],
+            },
         };
         const addAssetURLByDomElem = (url, {domElem, attrName, sourceFile = null}) => {
             if (url) {
@@ -48,6 +56,9 @@ export async function crawler(page) {
             } else {
                 // Log.error(`- ASSET: Empty (${sourceFile || page.url}) --> ${domElem && domElem.toString()}`);
             }
+        };
+        const storeAsset = (domElem, key) => {
+            assetURLs.embed[key].push(domElem);
         };
         const storeAssetUrl = (url, key) => {
             const pushAssetUrl = (url, key) => {
@@ -408,11 +419,31 @@ export async function crawler(page) {
         });
 
         /**
+         * script tag without src
+         */
+        dom.querySelectorAll('script:not([src]):not([type]), script[type="text/javascript"]:not([src])').forEach((elem) => {
+            const content = elem.textContent || elem.innerText;
+            if (content && !content.includes('google')) {
+                storeAsset(elem, "scripts");
+            }
+        });
+
+        /**
+         * style tag
+         */
+        dom.querySelectorAll('style').forEach((elem) => {
+            storeAsset(elem, "styles");
+        });
+
+        /**
          * attr style
          */
-        const elements = dom.querySelectorAll('*[style]');
-        const inlineStyles = [...elements].map(element => element.getAttribute('style')).join('; ');
-        retrieveURLs(page.webUrl, inlineStyles).catch(error => {
+        const inlineStyles = [];
+        dom.querySelectorAll('*[style]').forEach((elem) => {
+            inlineStyles.push(elem.getAttribute('style'));
+            storeAsset(elem, "styles");
+        });
+        retrieveURLs(page.webUrl, inlineStyles.join('; ')).catch(error => {
             Log.error(`- HTML: ${error.message} (${page.webUrl})`);
         });
 

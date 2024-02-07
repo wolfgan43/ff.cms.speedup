@@ -11,6 +11,7 @@ import * as prettier from "prettier";
 import * as image from "./seo/image.js";
 import {Page} from "./page.js";
 import {crawler} from "./crawler.js";
+import {scriptVideoLazy} from "./seo/video.js";
 
 const printArray = (array => {
     return `\n  ${array.join("\n  ")}`;
@@ -24,7 +25,8 @@ export function seo(urls) {
         link: {
             internal: {},
             external: {}
-        }
+        },
+        styles: []
     };
 
     const change = (files, type) => {
@@ -64,7 +66,6 @@ export function seo(urls) {
         if (!Array.isArray(files)) {
             files = [files];
         }
-
         files.forEach((file) => {
             changeOne(file, buffer.map[file]);
         });
@@ -91,7 +92,7 @@ export function seo(urls) {
     const optimize = async (page) => {
         const onRetrieveAssets = (assets, dom) => {
             const getRelativePath = (assetWebUrl, sourceFile) => {
-                if(assetWebUrl.startsWith(ASSET_PATH) && !page.src.getWebUrl(sourceFile).startsWith(ASSET_PATH)) {
+                if(!project.options.debug && assetWebUrl.startsWith(ASSET_PATH) && !page.src.getWebUrl(sourceFile).startsWith(ASSET_PATH)) {
                     return assetWebUrl;
                 }
 
@@ -149,21 +150,47 @@ export function seo(urls) {
                     buffer[type][data.sourceFile][data.src] = getRelativePath(assetWebUrl, data.sourceFile);
                 });
             }
+            const videos = async () => {
+                Log.debug(`- OPTIMIZE VIDEOS`);
+                if(assets.videos.length > 0) {
+                    Log.write(`- VIDEO Lazy: ${printArray(assets.videos)}`, page.dist.filePath);
+                    assets.system.scripts.push(scriptVideoLazy());
+                    setDomElem(assets.videos, (domElem) => {
+                        domElem.setAttribute("data-src", domElem.getAttribute("src"));
+                        domElem.removeAttribute("src");
+                    });
+                }
+            }
             const scripts = async () => {
                 Log.debug(`- OPTIMIZE JS`);
+                const scriptAsync = (
+                    project.options.js.async
+                        ? `defer="defer" async="async"`
+                        : `defer="defer"`
+                );
+
                 if (project.options.js.combine) {
                     /**
                      * Combine Javascript
+                     * - assets.scripts (files)
+                     * - assets.embed.scripts
+                     * - assets.system.scripts
                      */
                     Log.write(`- JS Combine: ${printArray(assets.scripts)}`, page.dist.filePath);
-                    const combinedScript = await js.combine(assets.scripts);
+                    const combinedScript = (await js.combine(assets.scripts)) +
+                        assets.embed.scripts
+                        .reduce((result, elem) => {
+                            const content = elem.textContent || elem.innerText;
+                            elem.remove();
+                            result.push(content);
+
+                            return result;
+                        }, [])
+                        .join('\n')
+                        + assets.system.scripts.join('\n');
+
                     Log.write(`- JS Combine Size: (${combinedScript.length} bytes)`, page.dist.filePath);
 
-                    const scriptAsync = (
-                        project.options.js.async
-                            ? ` defer="defer" async="async"`
-                            : ` defer="defer"`
-                    );
                     /**
                      * Html: Remove scripts
                      */
@@ -198,12 +225,11 @@ export function seo(urls) {
                     const scriptUrl = page.dist.getWebUrl(scriptFilePath);
                     Log.write(`- HTML Add JS Combine${scriptAsync ? ' (Async)' : ''}: ${scriptUrl}`, page.dist.filePath);
                     dom.querySelector("head").appendChild(HTMLParser.parse(
-                        `<script src="${setWebUrl(scriptUrl)}"${scriptAsync}></script>`
+                        `<script src="${setWebUrl(scriptUrl)}" ${scriptAsync}></script>`
                     ));
                 } else {
                     if (project.options.js.minify) {
                         js.min(assets.scripts, (script) => {
-                            //todo: da fare meglio questi percorsi (da cercarli in giro: eliminare .replace(page.sourceRoot, "")): page.dist.getFilePath(script.replace(page.sourceRoot, ""));
                             const dst = page.dist.getFilePath(script);
                             /**
                              * Write buffer scriptDst => scriptSrc
@@ -220,6 +246,18 @@ export function seo(urls) {
 
                             return dst;
                         });
+                    }
+
+                    /**
+                     * Add System Scripts
+                     */
+                    if (assets.system.scripts.length > 0) {
+                        //todo: da aggiungere la minifizzazione
+                        Log.write(`- JS Add System Scripts`, page.dist.filePath);
+
+                        dom.querySelector("body").appendChild(HTMLParser.parse(
+                            `<script ${scriptAsync}>${assets.system.scripts.join('\n')}</script>`
+                        ));
                     }
 
                     /**
@@ -249,11 +287,29 @@ export function seo(urls) {
                         /**
                          * Html: set Defer Scripts
                          */
+                        domElem.setAttribute("defer", "defer");
                         if(project.options.js.async) {
-                            //todo: convertire in base64 gli script inline se gia non sono async
-                            domElem.setAttribute("defer", "defer");
+                            domElem.setAttribute("async", "async");
                         }
                     });
+
+                    /**
+                     * Embed Scripts
+                     */
+                    if(assets.embed.scripts.length > 0) {
+                        Log.write(`- JS Add Embed Scripts`, page.dist.filePath);
+                        assets.embed.scripts.forEach((domElem) => {
+                            domElem.setAttribute("defer", "defer");
+                            if(project.options.js.async) {
+                                const content = domElem.textContent || domElem.innerText;
+                                const base64Content = Buffer.from(content).toString('base64');
+
+                                domElem.setAttribute("async", "async");
+                                domElem.setAttribute("src", `data:text/javascript;base64,${base64Content}`);
+                                domElem.textContent = "";
+                            }
+                        });
+                    }
                 }
             };
             const stylesheets = async () => {
@@ -271,31 +327,62 @@ export function seo(urls) {
                             : ''
                     );
 
-                    const combinedStylesheet = await css.combine(assets.stylesheets);
-
                     /**
                      * Critical CSS
                      * unCritical CSS
+                     * or
+                     * Combine StyleSheets
+                     * plus
+                     * Combine StyleSheets:
+                     * - assets.embed.styles
+                     * - assets.system.styles
                      */
                     let stylesheetUncritical = (
                         project.options.css.critical
-                            ? await css.critical({
-                                srcFilePath: page.url,
-                                stylesheets: assets.stylesheets,
-                            }).then(({css, uncritical}) => {
-                                Log.write(`- HTML Add Critical Style Inline: (${css.length} bytes)`, page.dist.filePath);
+                        ? await css.critical({
+                            srcFilePath: page.url,
+                            stylesheets: assets.stylesheets,
+                        }).then(({css, uncritical}) => {
+                            Log.write(`- HTML Add Critical Style Inline: (${css.length} bytes)`, page.dist.filePath);
 
-                                dom.querySelector("head").appendChild(HTMLParser.parse(
-                                    `<style>${css}</style>`
-                                ));
+                            dom.querySelector("head").appendChild(HTMLParser.parse(
+                                `<style>${css}</style>`
+                            ));
 
-                                return uncritical;
-                            }).catch((err) => {
-                                console.error(err);
-                                process.exit(0);
-                            })
-                            : combinedStylesheet
-                    );
+                            return uncritical;
+                        }).catch((err) => {
+                            console.error(err);
+                            process.exit(0);
+                        })
+                        : await css.combine(assets.stylesheets)
+                    )
+                    //todo: da gestire il cambio degli url degli asset che erano presenti nell'html
+                    /*+ assets.embed.styles
+                        .reduce((result, elem, index) => {
+                            result.push((() => {
+                                if (elem.tagName === "STYLE") {
+                                    const content = elem.textContent || elem.innerText;
+                                    elem.remove();
+                                    return content;
+                                } else {
+                                    const style = elem.getAttribute("style");
+                                    const index = (buffer.styles.indexOf(style) === -1
+                                            ? buffer.styles.push(style) - 1
+                                            : buffer.styles.indexOf(style)
+                                    );
+
+                                    elem.classList.add(`style-${index}`);
+                                    elem.removeAttribute("style");
+
+                                    return `.style-${index} { ${style} }`;
+                                }
+                            })());
+
+                            return result;
+                        }, [])
+                        .join('\n')*/
+                    + assets.system.styles.join('\n');
+
                     Log.write(`- CSS Combine unCritical: (${stylesheetUncritical.length} bytes)`, page.dist.filePath);
 
                     /**
@@ -388,6 +475,28 @@ export function seo(urls) {
                     }
 
                     /**
+                     * Embed Styles
+                     */
+                    if(assets.embed.styles.length > 0) {
+                        Log.write(`- CSS Add Embed Styles`, page.dist.filePath);
+                        assets.embed.styles.forEach((domElem) => {
+                            //todo: da aggiungere la minifizzazione
+                        });
+                    }
+
+                    /**
+                     * Add System Styles
+                     */
+                    if (assets.system.styles.length > 0) {
+                        //todo: da aggiungere la minifizzazione
+                        Log.write(`- CSS Add System Styles`, page.dist.filePath);
+
+                        dom.querySelector("head").appendChild(HTMLParser.parse(
+                            `<style>${assets.system.styles.join('\n')}</style>`
+                        ));
+                    }
+
+                    /**
                      * Html: change StyleSheets Ref
                      */
                     Log.write(`- CSS Change Stylesheets${project.options.css.async ? " Async": ""}${project.options.css.minify ? ", Minified": ""}: ${printArray(assets.stylesheets)}`, page.dist.filePath);
@@ -415,30 +524,50 @@ export function seo(urls) {
                 }
             };
             const images = async () => {
-                //console.log(`file://${process.cwd()}/` + urlHtml.substr(1));
-                //await image.setRenderedDimensions(`file://${process.cwd()}/` + urlHtml.substr(1));
-                //process.exit(0);
+                const resolutions = [640, 916, 1030];
+                const sizes = "(min-width: 1366px) 916px, (min-width: 1536px) 1030px, 100vw";
                 for (const img of assets.images) {
                     if (!Stats.isset(img, "images")) {
                         Stats.save(img, "images", -1);
                         if (fs.existsSync(img)) {
                             const imgOptimized = image.optimize(img, project.options.img);
-                            const imageFilePath = path.dirname(page.dist.getFilePath(img)) + SEP + imgOptimized.imageBaseName;
+                            const imageDirPath = path.dirname(page.dist.getFilePath(img));
+                            const imageFilePath = imageDirPath + SEP + imgOptimized.imageBaseName();
                             const imageWebUrl = page.dist.getWebUrl(imageFilePath);
                             /**
-                             * Write buffer img: new dst, metadata
+                             * Write buffer img: new dst
                              */
                             buffer.assets[img] = {
                                 dst: imageWebUrl,
-                                metadata: imgOptimized.metadata
+                                metadata: imgOptimized.metadata,
+                                responsive : []
                             };
+
+
 
                             /**
                              * Write buffer foreach sourceFile (stylesheet, html)
                              */
                             setSource(img, imageWebUrl);
 
-                            clone.saveData(imageFilePath, await imgOptimized.buffer, "imagesOptimized");
+                            /**
+                             * Responsive Image
+                             */
+                            if (imgOptimized.isResponsive) {
+                                resolutions.forEach((resolution) => {
+                                    const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(resolution);
+
+                                    buffer.assets[img].responsive.push({
+                                        dst: page.dist.getWebUrl(responsiveFilePath),
+                                        resolution: resolution
+                                    });
+                                });
+                                for (const resolution of resolutions) {
+                                    const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(resolution);
+                                    clone.saveData(responsiveFilePath, await imgOptimized.buffer(resolution), "imagesOptimized");
+                                }
+                            }
+                            clone.saveData(imageFilePath, await imgOptimized.buffer(), "imagesOptimized");
                         } else {
                             Log.error(`- ASSET: Not Found (${img}) --> ${page.url}`, page.dist.filePath);
                         }
@@ -452,14 +581,29 @@ export function seo(urls) {
                             Log.write(`- HTML Change Image${project.options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].dst}`, page.dist.filePath);
 
                             domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].dst));
+                            if(buffer.assets[img].responsive.length > 0) {
+                                if (domElem.tagName === "IMG") {
+                                    const srcset = [];
+                                    buffer.assets[img].responsive.forEach((responsive) => {
+                                        srcset.push(`${setWebUrl(responsive.dst)} ${responsive.resolution}w`);
+                                    });
+                                    domElem.setAttribute("srcset", srcset.join(", "));
+                                    domElem.setAttribute("sizes", sizes);
+                                } else if(attrName === "poster") {
+                                    domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].responsive[0].dst));
+                                }
+                            }
 
                             /**
                              * Set Image Width, Height
                              */
                             if (buffer.assets[img].metadata && domElem.tagName === "IMG" && !domElem.getAttribute('width')) {
-                                buffer.assets[img].metadata.then(metadata => {
-                                    domElem.setAttribute('width', metadata.width);
-                                    domElem.setAttribute('height', "auto");
+                                buffer.assets[img].metadata()
+                                    .then((metadata) => {
+                                        if(metadata) {
+                                            domElem.setAttribute('width', metadata.width);
+                                            domElem.setAttribute('height', metadata.height);
+                                        }
                                 });
                             }
 
@@ -481,14 +625,14 @@ export function seo(urls) {
                         Stats.save(icon, "icons", -1);
                         if(fs.existsSync(icon)) {
                             const iconOptimized = image.optimize(icon, project.options.img);
-                            const iconFilePath = path.dirname(page.dist.getFilePath(icon)) + SEP + iconOptimized.imageBaseName;
+                            const iconFilePath = path.dirname(page.dist.getFilePath(icon)) + SEP + iconOptimized.imageBaseName();
                             const iconWebUrl = page.dist.getWebUrl(iconFilePath);
                             /**
                              * Write buffer img: new dst, metadata
                              */
                             buffer.assets[icon] = {
                                 dst: iconWebUrl,
-                                metadata: null
+                                metadata: iconOptimized.metadata,
                             };
 
                             /**
@@ -496,7 +640,7 @@ export function seo(urls) {
                              */
                             setSource(icon, iconWebUrl);
 
-                            clone.saveData(iconFilePath, await iconOptimized.buffer, "iconsOptimized");
+                            clone.saveData(iconFilePath, await iconOptimized.buffer(), "iconsOptimized");
                         } else {
                             Log.error(`- ASSET: Not Found (${icon}) --> ${page.url}`, page.dist.filePath);
                         }
@@ -510,10 +654,13 @@ export function seo(urls) {
                             domElem.setAttribute(attrName, setWebUrl(buffer.assets[icon].dst));
 
                             if (buffer.assets[icon].metadata && domElem.tagName === "IMG" && !domElem.getAttribute('width')) {
-                                buffer.assets[icon].metadata.then(metadata => {
-                                    domElem.setAttribute('width', metadata.width);
-                                    domElem.setAttribute('height', "auto");
-                                });
+                                buffer.assets[icon].metadata()
+                                    .then((metadata) => {
+                                        if(metadata) {
+                                            domElem.setAttribute('width', metadata.width);
+                                            domElem.setAttribute('height', metadata.height);
+                                        }
+                                    });
                             }
                         }
                     });
@@ -542,6 +689,7 @@ export function seo(urls) {
             }
 
             return Promise.all([
+                videos(),
                 scripts(),
                 stylesheets(),
                 images(),
@@ -601,7 +749,7 @@ export function seo(urls) {
             });
 
             return Promise.all(promises).then(() => {
-                const stylesheets = Stats.get("stylesheetsOptimized");
+                const stylesheets = Stats.get("stylesheetsOptimized") || [];
 
                 change(stylesheets, "css");
 
