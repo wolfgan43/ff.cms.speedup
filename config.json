@@ -37,10 +37,11 @@
     "combine": false
   },
   "link": {
-    "relative": true,
+    "relativeUrl": false,
+    "relativeAsset": false,
     "removeExtension": [".html", ".htm"],
     "removeIndex": true
   },
-  "attrAssetMap": ["data-image-src"],
-  "debug": false
+  "attrAssetMap": ["data-image-src", "data-src"],
+  "debug": true
 }

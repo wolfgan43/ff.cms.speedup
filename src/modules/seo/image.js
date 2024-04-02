@@ -4,14 +4,18 @@ import sharp from "sharp";
 import * as svgo from "svgo";
 
 import puppeteer from 'puppeteer';
+import {DOT, SEP} from "../../constant.js";
 
+const getNoImage = () => {
+    return fs.readFileSync(DOT + SEP + "no-image.webp");
+}
 const img = (imagePath, options = {
     webp: false,
 }) => {
     const imageExt = path.extname(imagePath);
     const imageFileName = path.basename(imagePath, imageExt);
     const imageBuffer = fs.readFileSync(imagePath);
-    const image = sharp(imageBuffer);
+    const image = sharp(imageBuffer.length > 0 ? imageBuffer : getNoImage());
     const imageFileExt = options.webp && ![".webp"].includes(imageExt) ? ".webp" : imageExt;
 
     const toBuffer = async (image) => {

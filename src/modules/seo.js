@@ -9,7 +9,7 @@ import {Log, Stats} from '../libs/log.js';
 import * as js from "./seo/js.js";
 import * as prettier from "prettier";
 import * as image from "./seo/image.js";
-import {Page} from "./page.js";
+import {Page, resolvePath} from "./page.js";
 import {crawler} from "./crawler.js";
 import {scriptVideoLazy} from "./seo/video.js";
 
@@ -91,12 +91,22 @@ export function seo(urls) {
     }
     const optimize = async (page) => {
         const onRetrieveAssets = (assets, dom) => {
+            const getAbsolutePath = (assetsWebUrl, sourceFile) => {
+                if (assetsWebUrl.startsWith(DOT + SEP)) {
+                    assetsWebUrl = assetsWebUrl.substring(2);
+                }
+
+                return (assetsWebUrl.startsWith(SEP)
+                    ? assetsWebUrl
+                    : resolvePath( page.src.getWebUrl(path.dirname(sourceFile)) + SEP + assetsWebUrl)
+                );
+            }
             const getRelativePath = (assetWebUrl, sourceFile) => {
-                if(!project.options.debug && assetWebUrl.startsWith(ASSET_PATH) && !page.src.getWebUrl(sourceFile).startsWith(ASSET_PATH)) {
+                if(project.options.link.relativeAsset && assetWebUrl.startsWith(ASSET_PATH) && !page.src.getWebUrl(sourceFile).startsWith(ASSET_PATH)) {
                     return assetWebUrl;
                 }
 
-                if(assetWebUrl.startsWith(DOT + SEP) || assetWebUrl === SEP) {
+                if(assetWebUrl.startsWith(DOT + SEP) || assetWebUrl === SEP || assetWebUrl.startsWith(DOT + DOT + SEP)) {
                     return assetWebUrl;
                 }
 
@@ -117,16 +127,15 @@ export function seo(urls) {
                     .concat(assetParts)
                     .join(SEP);
             };
-            const setWebUrl = (url) => {
+            const setWebUrl = (url, hostname = "") => {
                 let modifiedUrl = project.options.link.removeExtension.reduce((acc, ext) => acc.replace(new RegExp(`${ext}$`, 'i'), ''), url);
 
                 if (project.options.link.removeIndex) {
                     modifiedUrl = modifiedUrl.replace(/\/index(\.[a-zA-Z0-9]{2,5})?$/i, '/');
                 }
-
-                return (project.options.link.relative
+                return hostname + (!hostname && project.options.link.relativeUrl
                     ? getRelativePath(modifiedUrl, page.url)
-                    : modifiedUrl
+                    : getAbsolutePath(modifiedUrl, page.url)
                 );
             }
             const setDomElem = (urls, onDomElem) => {
@@ -527,28 +536,31 @@ export function seo(urls) {
                 const resolutions = [640, 916, 1030];
                 const sizes = "(min-width: 1366px) 916px, (min-width: 1536px) 1030px, 100vw";
                 for (const img of assets.images) {
-                    if (!Stats.isset(img, "images")) {
-                        Stats.save(img, "images", -1);
-                        if (fs.existsSync(img)) {
-                            const imgOptimized = image.optimize(img, project.options.img);
-                            const imageDirPath = path.dirname(page.dist.getFilePath(img));
+                    const assetImg = (img.startsWith(project.options.host)
+                        ? project.srcPath(img.replace(project.options.host, ""))
+                        : img
+                    );
+                    if (!Stats.isset(assetImg, "images")) {
+                        Stats.save(assetImg, "images", -1);
+                        if (fs.existsSync(assetImg)) {
+                            const imgOptimized = image.optimize(assetImg, project.options.img);
+                            const imageDirPath = path.dirname(page.dist.getFilePath(assetImg));
                             const imageFilePath = imageDirPath + SEP + imgOptimized.imageBaseName();
                             const imageWebUrl = page.dist.getWebUrl(imageFilePath);
+
                             /**
                              * Write buffer img: new dst
                              */
-                            buffer.assets[img] = {
+                            buffer.assets[assetImg] = {
                                 dst: imageWebUrl,
                                 metadata: imgOptimized.metadata,
                                 responsive : []
                             };
 
-
-
                             /**
                              * Write buffer foreach sourceFile (stylesheet, html)
                              */
-                            setSource(img, imageWebUrl);
+                            setSource(assetImg, imageWebUrl);
 
                             /**
                              * Responsive Image
@@ -557,7 +569,7 @@ export function seo(urls) {
                                 resolutions.forEach((resolution) => {
                                     const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(resolution);
 
-                                    buffer.assets[img].responsive.push({
+                                    buffer.assets[assetImg].responsive.push({
                                         dst: page.dist.getWebUrl(responsiveFilePath),
                                         resolution: resolution
                                     });
@@ -573,37 +585,47 @@ export function seo(urls) {
                         }
                     }
 
+                    if(!buffer.assets[img] && buffer.assets[assetImg]) {
+                        buffer.assets[img] = buffer.assets[assetImg];
+                    }
+
                     /**
                      * Set foreach Image and foreach Page setDomElem
                      */
                     setDomElem(img, (domElem, attrName) => {
+                        const hostname = (domElem.tagName === "META" && img.startsWith(project.options.host) || !(img.startsWith("http") || img.startsWith("data:"))
+                            ? project.options.host
+                            : ""
+                        );
+
                         if (buffer.assets[img]) {
                             Log.write(`- HTML Change Image${project.options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].dst}`, page.dist.filePath);
 
-                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].dst));
+                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].dst, hostname));
                             if(buffer.assets[img].responsive.length > 0) {
                                 if (domElem.tagName === "IMG") {
                                     const srcset = [];
                                     buffer.assets[img].responsive.forEach((responsive) => {
-                                        srcset.push(`${setWebUrl(responsive.dst)} ${responsive.resolution}w`);
+                                        srcset.push(`${setWebUrl(responsive.dst, hostname)} ${responsive.resolution}w`);
                                     });
                                     domElem.setAttribute("srcset", srcset.join(", "));
                                     domElem.setAttribute("sizes", sizes);
                                 } else if(attrName === "poster") {
-                                    domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].responsive[0].dst));
+                                    domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].responsive[0].dst, hostname));
                                 }
                             }
 
                             /**
                              * Set Image Width, Height
                              */
-                            if (buffer.assets[img].metadata && domElem.tagName === "IMG" && !domElem.getAttribute('width')) {
-                                buffer.assets[img].metadata()
-                                    .then((metadata) => {
-                                        if(metadata) {
-                                            domElem.setAttribute('width', metadata.width);
-                                            domElem.setAttribute('height', metadata.height);
-                                        }
+                            if (buffer.assets[img].metadata && domElem.tagName === "IMG"
+                                && (!domElem.getAttribute('width') || !domElem.getAttribute('height'))
+                            ) {
+                                buffer.assets[img].metadata().then((metadata) => {
+                                    if(metadata) {
+                                        isNaN(domElem.getAttribute('width')) && domElem.setAttribute('width', metadata.width);
+                                        isNaN(domElem.getAttribute('height')) && domElem.setAttribute('height', metadata.height);
+                                    }
                                 });
                             }
 

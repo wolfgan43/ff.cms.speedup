@@ -169,10 +169,13 @@ export async function crawler(page) {
             return url.startsWith(SEP) || url.startsWith(DOT + SEP) || url.startsWith('http');
         };
         const resolveSrcPath = (asset) => {
+            const sourceRoot = page.sourceRoot.replace(/\/+$/, '');
             if (asset.startsWith('http')) {
                 return asset;
-            } else if (isAbsoluteURL(asset)) {
-                return page.sourceRoot + asset;
+            } else if (asset.startsWith(DOT + SEP)) {
+                return sourceRoot + asset.substring(1);
+            } else if (asset.startsWith(SEP)) {
+                return sourceRoot + asset;
             } else {
                 return page.sourceRoot + page.pathName + SEP + asset;
             }

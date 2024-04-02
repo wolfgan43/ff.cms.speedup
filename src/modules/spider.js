@@ -2,7 +2,7 @@ import {documentRoot, project} from "../constant.js";
 import {crawler} from "./crawler.js";
 import {Log, Stats} from "../libs/log.js";
 import * as clone from "../libs/clone.js";
-import {normalizeUrl, Page} from "./page.js";
+import {normalizeUrl, Page, resolvePath} from "./page.js";
 
 export function spider() {
     let promises    = [];
@@ -96,7 +96,7 @@ export function spider() {
             promises.push(clone.saveData(page.src.filePath, pageCrawled.dom.toString()));
 
             for (const href of pageCrawled.assets.html) {
-                urlsCrawled.includes(normalizeUrl(href)) || (await crawl(new Page(href)));
+                urlsCrawled.includes(resolvePath(normalizeUrl(href))) || (await crawl(new Page(href)));
             }
         } catch (e) {
             Log.error(`Empty HTML ${page.url} (from ${parentCrawl})`);

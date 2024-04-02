@@ -36,6 +36,15 @@ export const cachePath   = DOT + SEP + "cache" + SEP + projectName;
 export const srcAssetPath  = documentRoot + ASSET_PATH;
 
 const loadOptions = () => {
+    const debug = (config) => {
+        if (config.debug) {
+            config.link.relativeAssets = true;
+            config.link.relativeUrl = true;
+            config.link.removeExtension = [];
+            config.link.removeIndex = false;
+        }
+        return config;
+    }
     const getProjectOptions = () => {
         return fs.existsSync(documentRoot + SEP + '.optim.json') ?
             JSON.parse(fs.readFileSync(documentRoot + SEP + '.optim.json'), {encoding: CHARSET})
@@ -43,7 +52,7 @@ const loadOptions = () => {
     }
 
     try {
-        return {...JSON.parse(fs.readFileSync(DOT + SEP + 'config.json'), {encoding: CHARSET}), ...getProjectOptions()};
+        return debug({...JSON.parse(fs.readFileSync(DOT + SEP + 'config.json'), {encoding: CHARSET}), ...getProjectOptions()});
     } catch (error) {
         console.error('Errore durante la lettura del file config.json', error);
         process.exit(1);

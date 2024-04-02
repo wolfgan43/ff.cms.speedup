@@ -17,7 +17,7 @@ export const resolvePath = path => {
         .replace(/\/+/g, '/')
         .split(SEP)
         .reduce((resolved, part) => {
-            if (part === DOT + DOT) {
+            if (part === DOT + DOT && resolved.length > 0) {
                 resolved.pop();
             } else {
                 resolved.push(part);
@@ -63,7 +63,7 @@ export class Page {
     }
 
     constructor(url) {
-        this.url                    = normalizeUrl(url);
+        this.url                    = resolvePath(url);
         this.isWeb                  = this.url.indexOf('http') === 0 || this.url.indexOf('file://') === 0;
         if (this.isWeb) {
             const url               = new URL(this.url);
