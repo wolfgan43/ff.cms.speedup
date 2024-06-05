@@ -3,6 +3,9 @@ import path from "path";
 import HTMLParser from "node-html-parser";
 import fetch from "node-fetch";
 import fs from "fs";
+import {getRenderedImageDimensions} from "./seo/image.js";
+import puppeteer from "puppeteer";
+import {Console} from "../libs/log.js";
 
 export function normalizeUrl(url) {
     return url
@@ -25,6 +28,24 @@ export const resolvePath = path => {
             return resolved;
         }, []).join(SEP);
 };
+
+async function renderPage(url, callback = async () => {}) {
+    // Launch Puppeteer browser
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        executablePath: project.options.chromePath,
+    });
+
+    try {
+        const page = await browser.newPage();
+
+        await page.goto(url);
+        await callback(page);
+    } finally {
+        await browser.close();
+    }
+}
+
 export class Page {
     url                 = null;
     isWeb               = false;
@@ -33,6 +54,7 @@ export class Page {
     extension           = null;
     name                = null;
     webUrl              = null;
+    images          = {};
 
     src = {
         parent: null,
@@ -98,13 +120,24 @@ export class Page {
         this.dist.filePath      = project.distPath(this.webUrl);
         this.dist.webUrl        = this.webUrl.replace(SEP + 'index.html', '') || SEP;
     }
-    async getDom() {
+
+    async getDom(pageRender = false) {
+        const url = this.isWeb
+            ? this.url
+            : path.resolve(this.url);
+
         const html = this.isWeb
-            ? await fetch(this.url).then(res => res.text())
-            : fs.readFileSync(this.url, { encoding: CHARSET});
+            ? await fetch(url).then(res => res.text())
+            : fs.readFileSync(url, { encoding: CHARSET});
 
         if (!html) {
             throw new Error(`Page ${this.url} empty`);
+        }
+
+        if (pageRender && project.options.img.responsive) {
+            await renderPage(url, async page => {
+                this.images = await getRenderedImageDimensions(page);
+            });
         }
 
         return HTMLParser.parse(html);

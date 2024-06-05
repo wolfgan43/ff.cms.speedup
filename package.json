@@ -33,6 +33,7 @@
     "purgecss": "*",
     "sharp": "*",
     "svgo": "*",
-    "terser": "*"
+    "terser": "*",
+    "jsdom": "*"
   }
 }

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import * as dotenv from 'dotenv';
+
 dotenv.config();
 export const CHARSET        = 'utf8';
 export const HTML_EXT       = 'html';
@@ -34,6 +35,62 @@ export const documentRoot  = args[0];
 export const projectName   = args[1] ?? documentRoot.replaceAll(DOT, '').replaceAll(SEP, '-').replace(/^-+|-+$/g, '')
 export const cachePath   = DOT + SEP + "cache" + SEP + projectName;
 export const srcAssetPath  = documentRoot + ASSET_PATH;
+
+export const screenResolutions = [
+    { width: 640, height: 360, size: 640 },
+    { width: 1366, height: 768, size: 916 },
+    { width: 1536, height: 824, size: 1030 },
+    { width: 1920, height: 1080, size: 1536 },
+];
+export const screenSizes = [
+    null,
+    "(min-width: 1366px) 916px",
+    "(min-width: 1536px) 1030px",
+    "(min-width: 1920px) 1536px"
+];
+
+/*interface ProjectOptions {
+    host: string,
+    urls: string[],
+    copy: string[],
+    seo: {},
+    img: {
+        lazy: boolean,
+        alt: boolean,
+        title: boolean,
+        webp: boolean,
+        resize: boolean,
+        mediaQuery: boolean
+    },
+    html: {
+        minify: boolean
+    },
+    css: {
+        async: boolean,
+        purge: {
+            safeClasses: string[],
+            blockClasses: string[],
+        },
+        minify: boolean,
+        critical: boolean,
+        combine: boolean
+    },
+    js: {
+        async: boolean,
+        purge: boolean,
+        minify: boolean,
+        combine: boolean
+    },
+    link: {
+        relativeAssets: boolean,
+        relativeUrl: boolean,
+        removeExtension: string[],
+        removeIndex: boolean
+    },
+    attrAssetMap: string[],
+    chromePath: ?string,
+    debug: boolean,
+}*/
 
 const loadOptions = () => {
     const debug = (config) => {

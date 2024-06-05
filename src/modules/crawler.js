@@ -7,8 +7,8 @@ import fs from "fs";
 const _assetsURLs       = {};
 const _filenameByCat    = {};
 
-export async function crawler(page) {
-    const dom = await page.getDom();
+export async function crawler(page, pageRender = false) {
+    const dom = await page.getDom(pageRender);
     const getAssetsByType = (attrAssetMap = []) => {
 
         const assetURLs = {

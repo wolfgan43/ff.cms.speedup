@@ -4,18 +4,34 @@
     "/index.html",
     "/404.html"
   ],
+  "copy": [],
   "seo": {
-    "content": {},
-    "architecture": {},
-    "html": {}
+    "title": {
+        "max": 60,
+        "min": 20
+    },
+    "description": {
+        "max": 200,
+        "min": 150
+    },
+    "h1": {
+        "max": 30,
+        "min": 1
+    }
+  },
+  "accessibility": {
+    "aria": true,
+    "focus": true,
+    "lang": true,
+    "outline": true,
+    "tabindex": true
   },
   "img": {
     "lazy": true,
     "alt": true,
     "title": true,
     "webp": true,
-    "resize": false,
-    "mediaQuery": false
+    "responsive": true
   },
   "html": {
     "minify": false
@@ -43,5 +59,9 @@
     "removeIndex": true
   },
   "attrAssetMap": ["data-image-src", "data-src"],
+  "chromePath": null,
+  "log": {
+    "verbose": false
+  },
   "debug": true
 }

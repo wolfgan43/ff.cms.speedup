@@ -2,9 +2,7 @@ import fs from "fs";
 import path from "path";
 import sharp from "sharp";
 import * as svgo from "svgo";
-
-import puppeteer from 'puppeteer';
-import {DOT, SEP} from "../../constant.js";
+import {DOT, project, screenResolutions, SEP} from "../../constant.js";
 
 const getNoImage = () => {
     return fs.readFileSync(DOT + SEP + "no-image.webp");
@@ -33,11 +31,11 @@ const img = (imagePath, options = {
     }
 
     return {
-        imageBaseName: (resolution) => resolution
-            ? imageFileName + "-" + resolution + imageFileExt
+        imageBaseName: (width) => width
+            ? imageFileName + "-" + width + imageFileExt
             : imageFileName + imageFileExt,
-        buffer : (resolution = null) => toBuffer(resolution
-            ? image.resize(resolution)
+        buffer : (width = null, height = null) => toBuffer(width
+            ? image.resize(width, height)
             : image),
         metadata: async () => await sharp(imageBuffer).metadata(),
         isResponsive    : true
@@ -69,72 +67,35 @@ export function optimize(imagePath, options = {
     }
 }
 
-export async function setRenderedDimensions(url) {
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
 
-    await page.goto("https://www.consul-etica.it/");
-    const supportedMediaQueries = await page.evaluate(() => {
-        // Ottieni tutte le media query supportate
-        const mediaQueries = window.matchMedia('');
+export async function getRenderedImageDimensions(page) {
+    const imageData = {};
 
-        // Filtra solo le media query che sono supportate
-        const supportedQueries = Array.from(mediaQueries).filter(query => query.matches)
-            .map(query => query.media);
+    // Wait for images to load
+    await page.waitForSelector('img');
 
-        return supportedQueries;
-    });
+    // Get all image elements
+    const images = await page.$$('img');
+    for (const image of images) {
+        const imageUrl = (await image.evaluate(img => {
+            img.removeAttribute("width");
+            img.removeAttribute("height");
+            return img.src;
+        })).replace('file:///', '');
 
-    console.log('Media query supportate:', supportedMediaQueries);
-
-    const mediaQueries = [
-        '(max-width: 576px)',
-        '(min-width: 576px) and (max-width: 768px)',
-        '(min-width: 768px) and (max-width: 992px)',
-        '(min-width: 992px) and (max-width: 1200px)',
-        '(min-width: 1200px)',
-    ];
-
-    const images = page.$$eval('img', (elements) =>
-        elements.map((img) => ({
-            src: img.src,
-            width: img.offsetWidth,
-            height: img.offsetHeight,
-            srcset: []
-        }))
-    );
-    for (const query of mediaQueries) {
-        await page.setViewport({ width: 500, height: 600 }); // Imposta la dimensione dello schermo desiderata
-
-        // Esegui il rendering della pagina HTML con la media query specificata
-        await page.emulateMediaType('screen');
-        await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
-        //await page.emulateMedia(query);
-
-        const renderedImages = await images;
-        console.log(await images);
-
-        // Imposta le dimensioni renderizzate e l'attributo srcset per ogni immagine
-        for (const img of renderedImages) {
-            const { src, width, height } = img;
-
-            const srcset = `${src.replace(/(\.[^.]+)$/, `-${width}x${height}$1`)} ${width}w`;
-            img.srcset.push(srcset);
-            /*await page.$eval(`img[src="${src}"]`, (element) => {
-                element.setAttribute('width', element.offsetWidth.toString());
-                element.setAttribute('height', element.offsetHeight.toString());
-                element.setAttribute('srcset', srcset);
-            });*/
+        const responsive = [];
+        for (const viewport of screenResolutions) {
+            await page.setViewport(viewport);
+            responsive.push(await image.evaluate(img => ({
+                width: img.offsetWidth,
+                height: img.offsetHeight,
+            })));
         }
-        console.log(renderedImages);
+
+        imageData[imageUrl] = responsive;
     }
 
-    // Ottieni il codice HTML aggiornato
-    const updatedHtml = await page.content();
-
-    await browser.close();
-
-    return updatedHtml;
+    return imageData;
 }
 
 

@@ -71,6 +71,22 @@ const save = (msg, bucket = logBucket, severity = "info", color = null) => {
     });
 }
 
+export class Console {
+    static log(msg) {
+        process.stdout.write("\n " + msg);
+    }
+    static logSuccess(msg) {
+        process.stdout.write(colors.green + msg + colors.reset);
+    }
+
+    static logError(msg) {
+        process.stderr.write(colors.red + msg + colors.reset);
+    }
+    static LogWarn(msg) {
+        process.stdout.write(colors.yellow + msg + colors.reset);
+    }
+}
+
 export class Log {
     static track(bucket) {
         logBucket = bucket;
@@ -105,13 +121,18 @@ export class Log {
             }
         }
 
-        process.stdout.write("\n");
-        process.stdout.write("=".padStart(process.stdout.columns, "=") + "\n");
-        process.stdout.write(bucket.padStart((process.stdout.columns + bucket.length ) / 2, " ") + "\n");
-        process.stdout.write("-".padStart(process.stdout.columns, "-") + "\n");
+        let logBucket = (logs[bucket] || []);
+        if (!project.options.log.verbose) {
+            logBucket = logBucket.filter(log => log.msg.toLowerCase().includes("err:") || log.msg.toLowerCase().includes("warn:"));
+        }
 
-        if(logs[bucket] !== undefined && logs[bucket].length > 0) {
-            logs[bucket].forEach((log) => {
+        if (logBucket.length) {
+            process.stdout.write("\n");
+            process.stdout.write("=".padStart(process.stdout.columns, "=") + "\n");
+            process.stdout.write(bucket.padStart((process.stdout.columns + bucket.length) / 2, " ") + "\n");
+            process.stdout.write("-".padStart(process.stdout.columns, "-") + "\n");
+
+            logBucket.forEach((log) => {
                 if (log.msg.indexOf(":") > -1) {
                     const arrMsg = log.msg.split(":");
                     const title = arrMsg.shift() + ":";

@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import {ASSET_PATH, CHARSET, DOT, project, SEP} from '../constant.js';
+import {ASSET_PATH, CHARSET, DOT, project, screenResolutions, screenSizes, SEP} from '../constant.js';
 import HTMLParser from 'node-html-parser';
 import {minify as HTMLMinifier} from 'html-minifier-terser';
 import * as css from './seo/css.js';
 import * as clone from '../libs/clone.js';
-import {Log, Stats} from '../libs/log.js';
+import {Log, Stats, Console} from '../libs/log.js';
 import * as js from "./seo/js.js";
 import * as prettier from "prettier";
 import * as image from "./seo/image.js";
@@ -26,7 +26,12 @@ export function seo(urls) {
             internal: {},
             external: {}
         },
-        styles: []
+        styles: [],
+        seo: {
+            h1: {},
+            title: {},
+            description: {}
+        }
     };
 
     const change = (files, type) => {
@@ -70,7 +75,6 @@ export function seo(urls) {
             changeOne(file, buffer.map[file]);
         });
     };
-
     const changeData = (content, replacements, prefix = null) => {
         const getRelativePath = (path) => {
             return prefix + SEP + (path.startsWith(DOT + SEP)
@@ -145,7 +149,6 @@ export function seo(urls) {
                     });
                 }
             };
-
             const setSource = (assetFilePath, assetWebUrl) => {
                 assets.source[assetFilePath] && assets.source[assetFilePath].forEach((data) => {
                     const type = (data.sourceFile.endsWith(".css")
@@ -158,6 +161,114 @@ export function seo(urls) {
                     }
                     buffer[type][data.sourceFile][data.src] = getRelativePath(assetWebUrl, data.sourceFile);
                 });
+            }
+            const getOuterSize = (imageData, resolution) => {
+                const { width = null, height = null } = imageData || {};
+                return {
+                    width: width > 0
+                        ? width > resolution.width ? resolution.width : width
+                        : null,
+                    height: height > 0
+                        ? height > resolution.height ? resolution.height : height
+                        : null
+                };
+            }
+            const calcOuterSize = (domElem, bufferImage) => {
+                if(bufferImage.default.outerWidth && bufferImage.default.outerHeight) {
+                    domElem.setAttribute('width', bufferImage.default.outerWidth);
+                    domElem.setAttribute('height', bufferImage.default.outerHeight);
+                } else {
+                    bufferImage.metadata && bufferImage.metadata().then((metadata) => {
+                        if (metadata) {
+                            const imgWidth = parseInt(domElem.getAttribute('width'));
+                            const imgHeight = parseInt(domElem.getAttribute('height'));
+                            if (imgHeight && !imgWidth) {
+                                domElem.setAttribute('width', Math.round(metadata.width * imgHeight / metadata.height));
+                            } else if (imgWidth && !imgHeight) {
+                                domElem.setAttribute('height', Math.round(metadata.height * imgWidth / metadata.width));
+                            } else if(imgWidth && imgHeight) {
+                                const ratio = metadata.width / metadata.height;
+                                if (imgWidth / imgHeight > ratio) {
+                                    domElem.setAttribute('height', Math.round(imgWidth / ratio));
+                                } else {
+                                    domElem.setAttribute('width', Math.round(imgHeight * ratio));
+                                }
+                            } else {
+                                domElem.setAttribute('width', metadata.width);
+                                domElem.setAttribute('height', metadata.height);
+                            }
+                        }
+                    });
+                }
+            }
+
+            const technical = async() => {
+                const h1s = dom.querySelectorAll("h1");
+                if (h1s.length === 0) {
+                    Log.error(`- SEO H1: Empty`, page.dist.filePath);
+                } else {
+                    if (h1s.length > 1) {
+                        Log.error(`- SEO H1: Multiple Tag`, page.dist.filePath);
+                    }
+
+                    const h1 = h1s[0].textContent;
+                    if (h1.length > project.options.seo.h1.max) {
+                        Log.warn(`- SEO H1 too long: (${h1.length}/${project.options.seo.h1.max} max) ${h1}`, page.dist.filePath);
+                    } else if (h1.length < project.options.seo.h1.min) {
+                        Log.warn(`- SEO H1 too short: (${h1.length}/${project.options.seo.h1.min} min) ${h1}`, page.dist.filePath);
+                    }
+
+                    (buffer.seo.h1[h1] ??= []).push(page.dist.filePath);
+                }
+
+                const titles = dom.querySelectorAll("title");
+                if (titles.length === 0) {
+                    Log.error(`- SEO Title: Empty`, page.dist.filePath);
+                } else {
+                    if (titles.length > 1) {
+                        Log.error(`- SEO Title: Multiple Tag`, page.dist.filePath);
+                    }
+
+                    const title = titles[0].textContent;
+                    if (title.length > project.options.seo.title.max) {
+                        Log.warn(`- SEO Title too long: (${title.length}/${project.options.seo.title.max} max) ${title}`, page.dist.filePath);
+                    } else if (title.length < project.options.seo.title.min) {
+                        Log.warn(`- SEO Title too short: (${title.length}/${project.options.seo.title.min} min) ${title}`, page.dist.filePath);
+                    }
+
+                    (buffer.seo.title[title] ??= []).push(page.dist.filePath);
+                }
+
+                const descriptions = dom.querySelectorAll("meta[name='description']");
+                if (descriptions.length === 0) {
+                    Log.error(`- SEO Meta Description: Empty`, page.dist.filePath);
+                } else {
+                    if (descriptions.length > 1) {
+                        Log.error(`- SEO Meta Description: Multiple Tag`, page.dist.filePath);
+                    }
+
+                    const description = descriptions[0].getAttribute("content");
+                    if (description.length > project.options.seo.description.max) {
+                        Log.warn(`- SEO Meta Description too long: (${description.length}/${project.options.seo.description.max} max) ${description}`, page.dist.filePath);
+                    } else if (description.length < project.options.seo.description.min) {
+                        Log.warn(`- SEO Meta Description too short: (${description.length}/${project.options.seo.description.min} min) ${description}`, page.dist.filePath);
+                    }
+
+                    (buffer.seo.description[description] ??= []).push(page.dist.filePath);
+                }
+                //todo: da implementare il controllo sul canonical
+                //todo: da implementare il controllo sul robots
+                //todo: da implementare il controllo sul hreflang
+                //todo: da implementare il controllo sul sitemap
+                //todo: da implementare il controllo sul openGraph
+                //todo: da implementare il controllo sul twitter
+                //todo: da implementare il controllo sulla favicon
+
+
+
+            }
+            const accessibility = async() => {
+
             }
             const videos = async () => {
                 Log.debug(`- OPTIMIZE VIDEOS`);
@@ -533,59 +644,97 @@ export function seo(urls) {
                 }
             };
             const images = async () => {
-                const resolutions = [640, 916, 1030];
-                const sizes = "(min-width: 1366px) 916px, (min-width: 1536px) 1030px, 100vw";
                 for (const img of assets.images) {
                     const assetImg = (img.startsWith(project.options.host)
                         ? project.srcPath(img.replace(project.options.host, ""))
                         : img
                     );
-                    if (!Stats.isset(assetImg, "images")) {
-                        Stats.save(assetImg, "images", -1);
-                        if (fs.existsSync(assetImg)) {
-                            const imgOptimized = image.optimize(assetImg, project.options.img);
-                            const imageDirPath = path.dirname(page.dist.getFilePath(assetImg));
-                            const imageFilePath = imageDirPath + SEP + imgOptimized.imageBaseName();
-                            const imageWebUrl = page.dist.getWebUrl(imageFilePath);
 
-                            /**
-                             * Write buffer img: new dst
-                             */
-                            buffer.assets[assetImg] = {
-                                dst: imageWebUrl,
-                                metadata: imgOptimized.metadata,
-                                responsive : []
-                            };
+                    if (fs.existsSync(assetImg)) {
+                        const imgOptimized = image.optimize(assetImg, project.options.img);
+                        const imageDirPath = path.dirname(page.dist.getFilePath(assetImg));
 
-                            /**
-                             * Write buffer foreach sourceFile (stylesheet, html)
-                             */
-                            setSource(assetImg, imageWebUrl);
+                        /**
+                         * Init buffer img
+                         */
+                        buffer.assets[assetImg] = {
+                            responsive : [],
+                            metadata: imgOptimized.metadata,
+                            default: {
+                                dst: null,
+                                outerWidth: null,
+                                outerHeight: null
+                            }
+                        };
 
-                            /**
-                             * Responsive Image
-                             */
-                            if (imgOptimized.isResponsive) {
-                                resolutions.forEach((resolution) => {
-                                    const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(resolution);
+                        /**
+                         * Responsive Image
+                         */
+                        const absoluteAssetImg = path.resolve(assetImg).replaceAll("\\", "/");
+                        if (imgOptimized.isResponsive && page.images[absoluteAssetImg]) {
+                            let prevWidth = '';
+                            for (let index = 0; index < screenResolutions.length; index++) {
+                                const resolution = screenResolutions[index];
+                                const outerSize = getOuterSize(page.images[absoluteAssetImg]?.[index], resolution);
+                                const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(outerSize.width);
 
-                                    buffer.assets[assetImg].responsive.push({
-                                        dst: page.dist.getWebUrl(responsiveFilePath),
-                                        resolution: resolution
-                                    });
+                                if (!outerSize.width || prevWidth === outerSize.width) {
+                                    continue;
+                                }
+
+                                buffer.assets[assetImg].responsive.push({
+                                    dst: page.dist.getWebUrl(responsiveFilePath),
+                                    resolution: resolution,
+                                    size: screenSizes[index],
+                                    outerWidth: outerSize.width,
+                                    outerHeight: outerSize.height
                                 });
-                                for (const resolution of resolutions) {
-                                    const responsiveFilePath = imageDirPath + SEP + imgOptimized.imageBaseName(resolution);
-                                    clone.saveData(responsiveFilePath, await imgOptimized.buffer(resolution), "imagesOptimized");
+
+                                prevWidth = outerSize.width;
+
+                                /**
+                                 * Save Image responsive
+                                 */
+                                if (!Stats.isset(responsiveFilePath, "imagesOptimized")) {
+                                    clone.saveData(responsiveFilePath, await imgOptimized.buffer(outerSize.width, outerSize.height), "imagesOptimized");
                                 }
                             }
-                            clone.saveData(imageFilePath, await imgOptimized.buffer(), "imagesOptimized");
-                        } else {
-                            Log.error(`- ASSET: Not Found (${img}) --> ${page.url}`, page.dist.filePath);
+
+                            /**
+                             * Set Image default
+                             */
+                            if (buffer.assets[assetImg].responsive.length > 0) {
+                                const countResolution = buffer.assets[assetImg].responsive.length - 1;
+                                const { dst, outerWidth, outerHeight } = buffer.assets[assetImg].responsive[countResolution];
+console.log(img, assetImg, dst, outerWidth, outerHeight);
+                                buffer.assets[assetImg].default = { dst, outerWidth, outerHeight };
+                            }
                         }
+
+                        if (!buffer.assets[assetImg].default.dst) {
+                            /**
+                             * Set Image default
+                             */
+                            const imageFilePath = imageDirPath + SEP + imgOptimized.imageBaseName();
+                            buffer.assets[assetImg].default.dst = page.dist.getWebUrl(imageFilePath);
+
+                            /**
+                             * Save Image default
+                             */
+                            if (!Stats.isset(imageFilePath, "imagesOptimized")) {
+                                clone.saveData(imageFilePath, await imgOptimized.buffer(), "imagesOptimized");
+                            }
+                        }
+
+                        /**
+                         * Write buffer foreach sourceFile (stylesheet, html)
+                         */
+                        setSource(assetImg, buffer.assets[assetImg].default.dst);
+                    } else {
+                        Log.error(`- ASSET: Not Found (${img}) --> ${page.url}`, page.dist.filePath);
                     }
 
-                    if(!buffer.assets[img] && buffer.assets[assetImg]) {
+                    if (!buffer.assets[img] && buffer.assets[assetImg]) {
                         buffer.assets[img] = buffer.assets[assetImg];
                     }
 
@@ -593,40 +742,46 @@ export function seo(urls) {
                      * Set foreach Image and foreach Page setDomElem
                      */
                     setDomElem(img, (domElem, attrName) => {
-                        const hostname = (domElem.tagName === "META" && img.startsWith(project.options.host) || !(img.startsWith("http") || img.startsWith("data:"))
+                        const hostname = (domElem.tagName === "META"
                             ? project.options.host
                             : ""
                         );
 
                         if (buffer.assets[img]) {
-                            Log.write(`- HTML Change Image${project.options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].dst}`, page.dist.filePath);
-
-                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].dst, hostname));
-                            if(buffer.assets[img].responsive.length > 0) {
-                                if (domElem.tagName === "IMG") {
+                            Log.write(`- HTML Change Image${project.options.img.lazy ? " Lazy": ""}: ${buffer.assets[img].default.dst}`, page.dist.filePath);
+if(!buffer.assets[img].default.dst) {
+    console.log(page.url, img, buffer.assets[img], assets.images);
+}
+                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].default.dst, hostname));
+                            if (domElem.tagName === "IMG") {
+                                /**
+                                 * Set Srcset and Sizes foreach Image responsive
+                                 */
+                                if(buffer.assets[img].responsive.length > 1) {
                                     const srcset = [];
+                                    const sizes = [];
                                     buffer.assets[img].responsive.forEach((responsive) => {
-                                        srcset.push(`${setWebUrl(responsive.dst, hostname)} ${responsive.resolution}w`);
+                                        srcset.push(`${setWebUrl(responsive.dst, hostname)} ${responsive.resolution.size}w`);
+                                        responsive.size && sizes.push(responsive.size);
                                     });
+                                    sizes.push("100vw");
                                     domElem.setAttribute("srcset", srcset.join(", "));
-                                    domElem.setAttribute("sizes", sizes);
-                                } else if(attrName === "poster") {
-                                    domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].responsive[0].dst, hostname));
+                                    domElem.setAttribute("sizes", sizes.join(", "));
                                 }
+                            } else if(attrName === "poster") {
+                                domElem.setAttribute(attrName, setWebUrl(buffer.assets[img].default.dst, hostname));
                             }
 
                             /**
                              * Set Image Width, Height
                              */
-                            if (buffer.assets[img].metadata && domElem.tagName === "IMG"
-                                && (!domElem.getAttribute('width') || !domElem.getAttribute('height'))
-                            ) {
-                                buffer.assets[img].metadata().then((metadata) => {
-                                    if(metadata) {
-                                        isNaN(domElem.getAttribute('width')) && domElem.setAttribute('width', metadata.width);
-                                        isNaN(domElem.getAttribute('height')) && domElem.setAttribute('height', metadata.height);
-                                    }
-                                });
+                            if (domElem.tagName === "IMG") {
+                                if(buffer.assets[img].responsive.length > 1) {
+                                    domElem.removeAttribute('width');
+                                    domElem.removeAttribute('height');
+                                } else {
+                                    calcOuterSize(domElem, buffer.assets[img]);
+                                }
                             }
 
                             /**
@@ -634,6 +789,20 @@ export function seo(urls) {
                              */
                             if (project.options.img.lazy && domElem.tagName === "IMG") {
                                 domElem.setAttribute("loading", "lazy");
+                            }
+
+                            /**
+                             * Alt Image
+                             */
+                            if (domElem.tagName === "IMG" && !domElem.getAttribute('alt')) {
+                                if(project.options.img.alt) {
+                                    const basenameImage = domElem.getAttribute("title") || path.basename(img, path.extname(img)).replaceAll("-", " ");
+
+                                    Log.warn(`- IMAGE noAlt: ${img} --> ${basenameImage} (Fixed)`, page.dist.filePath);
+                                    domElem.setAttribute("alt", basenameImage);
+                                } else {
+                                    Log.error(`- IMAGE noAlt: ${img}`, page.dist.filePath);
+                                }
                             }
                         } else {
                             Log.error(` - IMAGE noBuffer: ${img}`);
@@ -653,7 +822,11 @@ export function seo(urls) {
                              * Write buffer img: new dst, metadata
                              */
                             buffer.assets[icon] = {
-                                dst: iconWebUrl,
+                                default: {
+                                    dst: iconWebUrl,
+                                    outerWidth: null,
+                                    outerHeight: null
+                                },
                                 metadata: iconOptimized.metadata,
                             };
 
@@ -673,16 +846,10 @@ export function seo(urls) {
                      */
                     setDomElem(icon, (domElem, attrName) => {
                         if (buffer.assets[icon]) {
-                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[icon].dst));
+                            domElem.setAttribute(attrName, setWebUrl(buffer.assets[icon].default.dst));
 
-                            if (buffer.assets[icon].metadata && domElem.tagName === "IMG" && !domElem.getAttribute('width')) {
-                                buffer.assets[icon].metadata()
-                                    .then((metadata) => {
-                                        if(metadata) {
-                                            domElem.setAttribute('width', metadata.width);
-                                            domElem.setAttribute('height', metadata.height);
-                                        }
-                                    });
+                            if (buffer.assets[icon].metadata && domElem.tagName === "IMG") {
+                                calcOuterSize(domElem, buffer.assets[icon]);
                             }
                         }
                     });
@@ -711,6 +878,8 @@ export function seo(urls) {
             }
 
             return Promise.all([
+                technical(),
+                accessibility(),
                 videos(),
                 scripts(),
                 stylesheets(),
@@ -737,6 +906,7 @@ export function seo(urls) {
                     minifyCSS: true,
                     minifyJS: true
                 };
+
                 return (project.options.html.minify
                         ? HTMLMinifier(html, minifyOptions).then(html => {
                             return clone.saveData(page.dist.filePath, html, "htmlOptimized");
@@ -752,7 +922,7 @@ export function seo(urls) {
         Log.debug(`SEO SPEEDUP: ${page.url}`);
         Log.write(`- HTML Dom Loaded: ${page.url}`, page.dist.filePath);
 
-        const pageCrawled = (await crawler(page)).scrape({
+        const pageCrawled = (await crawler(page, true)).scrape({
             attrAssetMap: project.options.attrAssetMap,
         });
 
@@ -771,6 +941,28 @@ export function seo(urls) {
             });
 
             return Promise.all(promises).then(() => {
+                /**
+                 * SEO Technical
+                 */
+                Object.keys(buffer.seo.h1).forEach((h1) => {
+                    if (buffer.seo.h1[h1].length > 1) {
+                        Log.error(`- SEO Duplication H1: ${h1} in` + printArray(buffer.seo.h1[h1]), "SEO WEBSITE");
+                    }
+                });
+                Object.keys(buffer.seo.title).forEach((title) => {
+                    if (buffer.seo.title[title].length > 1) {
+                        Log.error(`- SEO Duplication Title: ${title}` + printArray(buffer.seo.title[title]), "SEO WEBSITE");
+                    }
+                });
+                Object.keys(buffer.seo.description).forEach((description) => {
+                    if (buffer.seo.description[description].length > 1) {
+                        Log.error(`- SEO Duplication Meta Description: ${description}` + printArray(buffer.seo.description[description]), "SEO WEBSITE");
+                    }
+                });
+
+                /**
+                 * Stylesheet
+                 */
                 const stylesheets = Stats.get("stylesheetsOptimized") || [];
 
                 change(stylesheets, "css");
